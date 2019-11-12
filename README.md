@@ -32,6 +32,144 @@
   
           源码分析：[HashMap-JDK8](Java/Java源码阅读/集合类/HashMap-JDK8.md)
         </details>
+
+      - <details><summary>HashSet</summary>
+  
+          #### 介绍
+          ```
+          HashSet的作用的保存一组没有重复的数据，HashSet内部维护一个HashMap，在add元素的时候只需要调用这个map的put方法并将新增元素作为key即可，这样保证了数据不会重复，而put的value是一个HashSet里定义的实例属性，所有的key共用这一个value，以减少内存占用
+          HashSet不保证线程安全，可以有一个null值，也不保证元素的顺序。
+          ```
+  
+          源码分析：[HashSet](Java/Java源码阅读/集合类/HashSet.md)
+        </details>
+
+      - <details><summary>Hashtable</summary>
+  
+          #### 介绍
+          ```
+          Hashtable底层是数组，数组的元素是单链表，和HashMap一样存在loadFactor和threshold，默认容量是11
+          Hashtable的实现方式和HashMap很像，不过实现过程很简单，比如求元素在数组中的位置直接使用key.hashCode() % table.length而不是HashMap中的位运算
+          Hashtable是线程安全的，大部分方法都添加了synchronized
+          ```
+  
+          源码分析：[Hashtable](Java/Java源码阅读/集合类/Hashtable.md)
+        </details>
+
+      - <details><summary>LinkedHashMap</summary>
+  
+          #### 介绍
+          ```
+          继承自HashMap，维护了一个双向链表，重写了HashMap中的若干方法在HashMap元素变化的时候改变双向链表，同时也保证HashMap的结点和双向链表的结点是同一个对象，这样能够直接通过HashMap的结点操作双向链表。默认访问是按照插入顺序访问，即直接遍历双向链表，可以设置accessOrder为true使得访问顺序变成越最近访问的数据越晚遍历到，LinkedHashMap的双向队列的对头元素为最老的元素。不保证线程安全。利用LinkedHashMap实现LRU缓存很简单，代码如下：
+
+          public LRUCache<K, V> extends LinkedHashMap<K, V> {
+              // 缓存大小
+              private int cacheSize;
+              public LRUCache(int cacheSize) {
+                  // 传入accessOrrder为true表示按照访问顺序实现LRU，如果传入false则表示按照插入顺序实现LRU
+                  super(16, 0.75, true);
+                  this.cacheSize = cacheSize;
+              }
+              // 该方法表示什么时候移除元素
+              protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+                  // 超过指定容量后移除最旧的元素
+                  return size() >= cacheSize;
+              }
+          }
+          ```
+  
+          源码分析：[LinkedHashMap](Java/Java源码阅读/集合类/LinkedHashMap.md)
+        </details>
+
+      - <details><summary>LinkedHashSet</summary>
+  
+          #### 介绍
+          ```
+          LinkedHashSet能够在HashSet功能的基础上保证插入元素的顺序，可以用插入的顺序访问元素，不保证线程安全
+          LinkedHashSet继承自HashSet，并且构造函数都是调用的父类构造函数即HashSet的构造函数:
+
+          HashSet(int initialCapacity, float loadFactor, boolean dummy) {
+              map = new LinkedHashMap<>(initialCapacity, loadFactor);    
+          }
+
+          这样底层就不像HashSet用的是HashMap，而是用的LinkedHashMap，利用LinkedHashMap实现按数据插入顺序访问
+          ```
+        </details>
+
+      - <details><summary>LinkedList</summary>
+  
+          #### 介绍
+          ```
+          LinkedList实现了List接口，底层是一个双向链表，允许Null元素，LinkedList可以从头或尾，这些操作使得LinkedList可被用作堆栈（Stack）、队列（Queue）或双向队列（Deque）。LinkedList不是线程安全的。一种解决方法是在创建 List时构造一个同步的List，方法如Collections.synchronizedList方法
+
+          LinkedList几个关键的方法：
+          - peek：获取头结点的数据，但是不删除头结点
+          - peekFirst：同peek
+          - peekLast：获取尾结点的数据，但是不删除尾结点
+          - element：获取头结点的数据，但是不删除头结点，如果是空队列则报NoSuchElementException
+          - poll：获取头结点数据并删除头结点
+          - pollFirst：同poll
+          - pollLast：获取尾结点数据并删除尾结点
+          - offer：添加数据到队尾
+          - offerFirst：添加数据到队头
+          - offerLast：同offer
+          - push：添加数据到队头
+          - pop：删除队头
+
+          其中push和pop用来实现Stack的操作
+          offer和poll实现队列操作
+          ```
+        </details>
+
+      - <details><summary>ArrayList</summary>
+  
+          #### 介绍
+          ```
+          底层是数组，默认初始容量10，扩容时每次默认原容量1.5倍（看grow方法的实现），如果需要的容量大于原容量则直接使用需要的容量作为新容量，元素的删除和扩容时底层数组的扩容都是利用的Arrays.copyOf方法实现的
+          ```
+
+          源码分析：[ArrayList](Java/Java源码阅读/集合类/ArrayList.md)
+        </details>
+
+      - <details><summary>Vector</summary>
+  
+          #### 介绍
+          ```
+          和ArrayList差别不大，大部分方法添加了`synchronized`关键字，所以是线程安全的。Vector默认扩容是容量增加2倍（ArrayList是1.5倍），Vector还提供了public synchronized int indexOf(Object o, int index)方法用于从index开始查找obj的下标
+          ```
+
+        </details>
+
+      - <details><summary>Stack</summary>
+  
+          #### 介绍
+          ```
+          Stack继承Vector，所以底层也是数组，并且是线程安全的，所有实现的方法都是直接调用的Vector方法的实现
+          ```
+
+          源码分析：[Stack](Java/Java源码阅读/集合类/Stack.md)
+        </details>
+
+      - <details><summary>TreeMap</summary>
+  
+          #### 介绍
+          ```
+          TreeMap能够以有序的顺序遍历，如果不传入一个Compartor则在比较时强转key为Comparable，不保证线程安全
+          底层使用的红黑树，TreeMap提供了多种遍历方式，如descendingKeySet：从后往前遍历，navigableKeySet：从前往后遍历等
+          TreeMap实现了NavigableMap接口，该接口在SortedMap接口的基础上定义了更丰富的访问可排序map的方法
+          ```
+
+          源码分析：[TreeMap](Java/Java源码阅读/集合类/TreeMap.md)
+        </details>
+
+      - <details><summary>TreeSet</summary>
+  
+          #### 介绍
+          ```
+          TreeSet底层用的是TreeMap，功能都是直接调用TreeMap的方法，和HashMap与HashSet的关系一样
+          ```
+        </details>
+
   - 并发类
 
 - JVM相关
@@ -576,6 +714,19 @@
 
 - MySQL
   - 基础知识
+    - 范式
+      - <details><summary>三范式的定义</summary>
+
+          ```
+          第一范式：字段不可分割
+          第二范式：非主属性必须完全依赖主属性，换句话说就是非主属性不能部分依赖主属性，如果主属性有多个列，每个非主属性必须有所有主属性的列来确定，而不是一部分主属性列，不满足第二范式会导致数据冗余
+          第三范式：任何非主属性不依赖于其它非主属性，也就是非主属性不能推出另一个非主属性
+          BCNF：主属性不能依赖部分非主属性
+          ```
+
+          [如何理解关系型数据库的常见设计范式？ - 刘慰的回答 - 知乎](https://www.zhihu.com/question/24696366/answer/29189700)
+          </details>
+
     - 隔离级别
       - <details><summary>有哪些隔离级别</summary>
 
@@ -851,12 +1002,18 @@
         ```
         </details>
 
-      - <details><summary>覆盖索引</summary>
+      - <details><summary>索引无效的情况</summary>
 
         ```
-        当查询的列在普通索引上有值，则执行查询是不需要回表，如执行的语句是select ID from T where k between 3 and 5，这时只需要查ID的值，而ID的值已经在k索引树上了，因此可以直接提供查询结果，不需要回表，这就被称为覆盖索引
+        如何MySQL优化器认为全表扫描比使用索引更快，则不使用索引，如表数据很少，考虑到行数和回表的代价，MySQL可能不使用索引
+        用or分隔开的条件，如果or前的条件中的列有索引，而后面的列没有索引，那么涉及到的索引都不会被用到，例如：select * from table_name where key1='a' or key2='b'，如果在key1上有索引而在key2上没有索引，则该查询也不会走索引
+        不符合最左前缀原则不使用索引
+        如果like是以'%'开始的，则该列上的索引不会被使用
+        如果列为字符串，则where条件中必须将字符常量值加引号，否则即使该列上存在索引，也不会被使用。例如：select * from table_name where key1=1，如果key1列保存的是字符串，即使key1上有索引，也不会被使用
+        WHERE字句的查询条件里有不等于号（WHERE column != ...）或<>操作符，索引无效
+        where条件是WHERE colume = null，索引无效
+        where语句的等号左边进行函数、算术运算或其他表达式运算时，索引无效
         ```
         </details>
-
 
 
