@@ -207,3 +207,50 @@ docker0  8000.0242d8e4dfc1 no  veth9c02e56
 VXLAN；
 host-gw；
 UDP。
+
+#### 流程
+1. 创建订单到数据库，为订单创建流程
+2. 根据Model或者说是Deploy获取流程定义
+3. 新建一个FlowProcess对象并保存到数据库，表示一个流程实体，如虚拟机申请流程，该对象还存有订单id，即BusinessKey
+4. 从Deploy中获取流程的JSON，该JSON中包含了流程的所有步骤和每个步骤的执行人等信息，记为activities
+5. 为流程中第一个步骤提交申请创建FlowTask对象并保存到数据库
+6. 提交申请步骤默认直接成功，直接执行下一个步骤
+7. 下一步动作时所有流程环节的通用逻辑，首先判断执行完成的流程环节是否是流程的最后一个环节
+   - 是则设置流程状态为完成，即上面创建的FlowProcess，之后发送流程完成事件，发送时传入参数为ProcessConstants.EventOperation.COMPLETE，流程事件是流程的属性，保存在flow_event表，用model_id和流程关联，并且还有一列operation，表示指定流程时间发生时触发，flow_event表中存了一列exector和arguments，分别表示处理流程事件的执行类和流程事件执行时使用的参数，用反射创建执行类处理流程完成事件，对于ProcessConstants.EventOperation.COMPLETE事件，默认是现实VmOrderEvent，并且argument为APPROVED，VmOrderEvent将订单的状态设置为argument，即订单已审批，同时后台有一个定时任务检查所有APPROVED状态的订单并执行，流程完成后就不会再影响订单了，流程也不会再有其他更新
+   - 否则从activities中获取下一个流程环节并获取流程的执行人，不为空则为每个执行人创建一个FlowTask，这么做是为了每个执行人能从自己的待办中获取自己需要处理的流程，之后发起流程Pending事件，默认没有处理Pending事件的流程事件
+8. 当某个执行人同意了审批，更新所有这一环节的FlowTask为完成，发送FlowTask完成事件，和流程事件一样完成事件的处理类保存在flow_event表中，但是默认没有处理FlowTask完成事件的类
+9. 进行下一个流程环节，即回到第7步
+10. 如果某人拒绝了审批，更新流程为TERMINATED状态，更新所有这一环节的FlowTask为TERMINATED，这样审批人在其待办中就看不到这个审批，发送流程TERMINATED事件，默认还是VmOrderEvent，flow_event表中有一条operation为TERMINATED，argument为Rejected的VmOrderEvent，在流程TERMINATED时更新订单状态为Rejected，流程结束
+11. 上面的各个环节都有发送消息的步骤，略
+
+#### client-go
+首先有个基础队列，用lock保证了线程安全，该队列有几个重要属性，数组queue、集合dirty和集合processing，添加新元素是先判断元素是否在dirty中，在则直接返回，繁殖同一个对象重复入队，否则将元素加到dirty，判断元素是否在processing中，在则直接返回，否则入队到queue
+获取元素是，如果queue为空，wait，否则取出队列的第一个元素，添加到processing中，删除dirty中该元素，以便能再次添加元素到dirty
+当元素处理完成后需要调用done方法，该方法删除processing中的该元素，如果dirty中存在该元素，添加到queue中，这就实现了同一个对象只能从队列中被获取一次，再次入队会被缓存到dirty中
+
+之后是延时队列，继承自基础队列，新增AddAfter方法，在指定时间后才入队元素，延时队列有一个clock获取系统事件，一个ticker定时器，延时队列还有个chan，元素是waitFor类型的，所有入队的元素先被封装为waitFor，waitFor持有需要入队的元素和入队时间
+还定义了waitForPriorityQueue数组，用于保存waitFor类型的元素，waitForPriorityQueue数组实现了go/src/container/heap/heap.go的Interface接口，所以是个优先级队列，按照入队时间排序
+延时队列加入新元素时先判断入队时间是否小于0，小于0直接入基础队列，否则根据入队时传入的时间参数将元素封装为waitFor添加到waitingForAddCh这个chan中，而延时队列在初始化后会启动一个协程调用waitingLoop方法，该方法从waitingForAddCh获取元素
+waitingLoop方法创建waitForPriorityQueue数组用于保存所有等待入队的waitFor，按时间排序，然后开启无限循环，根据队头元素的时间创建一个定时器（如果没有元素就是一个never），并select在该定时器和waitingForAddCh上，等待动作，如果定时器先发生，说明有元素能够入队了，结束select并重写循环，而循环开始会判断队列头元素时间是否到了，到了就入基础队列，从而实现定时入队，而如果select在waitingForAddCh上的等待返回了，则判断元素时间是否能够入队，能则直接入队，否则添加到waitForPriorityQueue数组中（调用heap.push方法实现按时间排序），同时有个map会记录waitForPriorityQueue数组中的元素，已存在的入数组只会更新时间
+
+本地缓存，显示Store接口的定义，定义了本读缓存的基本操作：
+```
+type Store interface {
+    Add(obj interface{}) error
+    Update(obj interface{}) error
+    Delete(obj interface{}) error
+    List() []interface{}
+    ListKeys() []string // 列举对象键
+    Get(obj interface{}) (item interface{}, exists bool, err error) // 返回指定对象对应对象键对应的对象
+    GetByKey(key string) (item interface{}, exists bool, err error) // 返回对象键指定的对象
+    Replace([]interface{}, string) error // 使用指定的元素替换存储中的所有元素，等同于删除全部原有对象再逐一添加新的对象
+    Resync() error // 重新同步存储对象
+}
+```
+本地缓存能够保存一个map，key为对象的唯一表示，value为对象，同时维护一些索引函数，本地缓存中的元素被添加时会被所有索引函数计算一次，并缓存计算结果
+
+之后是DeltaFIFO，Delta持有一个对象和对应的操作，如增删改，DeltaFIFO的replace方法接收一个list，list中是所有同步到的对象，DeltaFIFO根据KeyFunc为每个对象计算唯一标识保存到自己的map中，map的value是每个对象的Delta数组，初始情况下每个对象的Delta数组中都是一个sync事件，replace方法在将所有对象保存到自己的map后，根据knownObjects判断对象是否被删除了，如果被删除则添加删除的Delta到指定对象的Delta数组中
+
+之后是Reflector，Reflector会列举出所有现有的符合expectType对象，并入队这些对象的Sync Delta，同时会监控execptType对象的变化，将Add、Update、Delete等Delta入队，如果设置了resyncPeriod，则会定时调用store的Resync方法，store实际上就是DeltaFIFO
+
+Controller就是利用Reflector获取全量对象并监控对象的变化，并且将所有对象对应的Delta从Queue中取出交由ProcessFunc处理
