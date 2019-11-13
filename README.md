@@ -452,7 +452,7 @@
       空间碎片太多可能会导致以后在程序运行过程中需要分配较大对象时，无法找到足够的连续内存而不得不提前触发另一次垃圾收集动作。 
       ```
 
-      ![img](resources/标记-清除.png）
+      ![img](resources/标记_清除.png)
     </details>
 
     - <details><summary>复制</summary>
@@ -472,17 +472,17 @@
       够空间存放上一次新生代收集下来的存活对象时，这些对象将直接通过分配担保机制进入老年代。
       ```
 
-      ![img](resources/复制.png）
+      ![img](resources/复制.png)
     </details>
 
-    - <details><summary>标记-整理</summary>
+    - <details><summary>标记_整理</summary>
 
       #### 介绍
       ```
       标记过程仍然与“标记-清除”算法一样，但后续步骤不是直接对可回收对象进行清理，而是让所有存活的对象都向一端移动，然后直接清理掉端边界以外的内存。 
       ```
 
-      ![img](resources/标记-整理.png）
+      ![img](resources/标记-整理.png)
     </details>
 
   - 安全点（SafePoint）
@@ -514,7 +514,7 @@
       下面展示了7种作用于不同分代的收集器，如果两个收集器之间存在连线，就说明它们可以搭配使用。虚拟机所处的区域，则表示它是属于新生代收集器还是老年代收集器。
       ```
 
-      ![img](resources/垃圾回收器搭配.png）
+      ![img](resources/垃圾回收器搭配.png)
       </details>
 
     - <details><summary>垃圾回收器</summary>
@@ -530,7 +530,7 @@
         老年代使用标记-整理算法
         ```
 
-        ![Serial收集器](resources/Serial收集器.png）
+        ![Serial收集器](resources/Serial收集器.png)
         </details>
 
       - <details><summary>ParNew收集器</summary>
@@ -544,7 +544,7 @@
         老年代使用标记-整理算法
         ```
 
-        ![Serial收集器](resources/ParNew收集器.png）
+        ![Serial收集器](resources/ParNew收集器.png)
         </details>
 
       - <details><summary>Parallel Scavenge收集器</summary>
@@ -620,7 +620,7 @@
         以往的垃圾回收算法，如CMS，使用的堆内存结构如下：
         ```
 
-        ![G1-image1](resources/G1-image1.png）
+        ![G1-image1](resources/G1-image1.png)
 
         ```
         新生代：eden space + 2个survivor
@@ -632,7 +632,7 @@
         在G1算法中，采用了另外一种完全不同的方式组织堆内存，堆内存被划分为多个大小相等的内存块（Region），每个Region是逻辑连续的一段内存，结构如下：
         ```
 
-        ![G1-image2](resources/G1-image2.png）
+        ![G1-image2](resources/G1-image2.png)
 
         ```
         每个Region被标记了E、S、O和H，说明每个Region在运行时都充当了一种角色，其中H是以往算法中没有的，它代表Humongous，这表示这些Region存储的是巨型对象（humongous object，H-obj），当新建对象大小超过Region大小一半时，直接在新的一个或多个连续Region中分配，并标记为H。
@@ -942,7 +942,7 @@
       对于TCP会话的发送方，任何时候在其发送缓存内的数据都可以分为4类，“已经发送并得到对端ACK的”，“已经发送但还未收到对端ACK的”，“未发送但对端允许发送的”，“未发送且对端不允许发送”。其中“已经发送但还未收到对端ACK的”和“未发送但对端允许发送的”这两部分数据称之为发送窗口。
       当收到接收方新的ACK对于发送窗口中后续字节的确认是，窗口向右滑动，如：
       ```
-      ![滑动窗口](resources/滑动窗口.jpg）
+      ![滑动窗口](resources/滑动窗口.jpg)
       ```
       对于TCP的接收方，在某一时刻在它的接收缓存内存在3种。“已接收”，“未接收准备接收”，“未接收并未准备接收”（由于ACK直接由TCP协议栈回复，默认无应用延迟，不存在“已接收未回复ACK”）。其中“未接收准备接收”称之为接收窗口。
 
