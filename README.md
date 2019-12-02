@@ -251,7 +251,7 @@
           注意点：
           get、clear方法没有加锁，直接遍历所有的Segment，所以是弱一致的
           isEmpty方法中没有加锁，采用的是循环一次判断是否存在非空Segment，如果都为空则记住modCount，再循环一次，如果再次为空并且两次modCount相等，则返回true
-          size方法也是循环多次（默认两次）计算modCount是否相等，不想等并超出循环次数则获取Segment锁并再次计算size
+          size方法也是循环多次（默认两次）计算modCount是否相等，不相等并超出循环次数则获取Segment锁并再次计算size
           containsValue的思路和size是一样的
           ```
 
@@ -367,7 +367,7 @@
           #### 介绍
           ```
           闭锁可以初始化一个数量，所有在该闭锁上调用await方法的线程都会阻塞直到该闭锁上的countDown方法被调用指定次数，闭锁只能使用一次
-          实现原理是构造函数中指定了需要的countDown的次数并设为闭锁的状态，线程在await方法中会调用tryAcquireShared方法，该方法判断当前闭锁的状态是否为0来判断是否能够获取锁，也就是是否需要等待，如果状态不为0则进入aqs的等待队列，countDown方法会在每次调用的时候将闭锁状态减1，并在减到0时调用doReleaseShared唤醒头结点的后继，被唤醒的线程还会调用setHeadAndPropagate方法唤醒其他线程
+          实现原理是构造函数中指定了需要的countDown的次数并设为闭锁的状态，线程在await方法中会调用tryAcquireShared方法，该方法判断当前闭锁的状态是否为0来判断是否能够获取锁，也就是是否需要等待，如果状态不为0则进入aqs的等待队列，countDown方法会在每次调用的时候执行releaseShared方法将闭锁状态减1，并在减到0时（releaseShared方法会首先调用tryReleaseShared方法判断是否真要执行释放锁操作，减到0使得tryReleaseShared方法返回true，则会执行doReleaseShared方法释放共享锁）调用doReleaseShared唤醒头结点的后继，被唤醒的线程还会调用setHeadAndPropagate方法唤醒其他线程
           ```
 
           [CountDownLatch](CountDownLatch.md)
@@ -430,17 +430,56 @@
 
           [Semaphore](Semaphore.md)
         </details>
-      
-      - <details><summary>AbstractQueuedSynchronizer</summary>
-  
-          #### 介绍
-          ```
-          
-          ```
-
-          [AbstractQueuedSynchronizer](AbstractQueuedSynchronizer.md)
-        </details>
     
+- 设计模式
+  - 平时碰到的设计模式
+    - <details><summary>Spring中的设计模式</summary>
+
+      #### 介绍
+      ```
+      看Spring源码时碰到的设计模式，由于Spring源码总结是很久之前写的，所以这里只能想到啥写啥
+      ``` 
+
+      #### 建造者模式
+      ```
+      BeanDefinitionBuilder类
+      ```
+
+      #### 适配器模式
+      ```
+      Spring AOP的代理需要MethodInterceptor类型的对象执行代理逻辑，而Spring AOP解析bean的代理配置时保存的时Advisor对象，此时就用到了适配器，在真正执行代理逻辑之前会为当前bean的所有Advisor中的Advice创建MethodInterceptor对象，而实现适配的类是AdvisorAdapter，默认实现有MethodBeforeAdviceAdapter、AfterReturningAdviceAdapter、ThrowsAdviceAdapter
+
+      另一个适配器是Spring MVC中的DispatcherServlet对象在处理请求时用到的，Spring MVC会根据请求的路径获取handler，handler可能是任意类型的，如基于注解的实现则handler为HandleMethod类型，基于XML的实现可能是AbstractController类型，此时Spring MVC会通过HandlerAdapter执行请求的处理，也算是一种适配吧，这里和常见的适配器模式不同的地方在于这里没有通过HandlerAdapter对象返回不同于handler的另一个接口类型，而是直接由HandlerAdapter对象根据handler执行请求
+      ```
+
+      #### 代理模式
+      ```
+      Spring AOP
+      ```
+
+      #### 观察者模式
+      ```
+      ApplicationContext的事件，bean实现了ApplicationListener接口会到收到ApplicationContext的不同动作对应的事件，如ContextClosedEvent、ContextRefreshedEvent、ContextStartedEvent、ContextStoppedEvent
+      ```
+
+      #### 责任链模式
+      ```
+      Spring AOP在真正执行代理逻辑时，会创建由MethodInterceptor组成的链，由ReflectiveMethodInvocation执行链的调用
+      ```
+
+      #### 模版方法模式
+      ```
+      Spring AOP中AbstractAutoProxyCreator实现了BeanPostProcessor接口，以实现创建bean时返回代理bean，其在wrapIfNecessary方法中定义了获取bean代理的基本逻辑，抽象方法如getAdvicesAndAdvisorsForBean由子类实现
+
+      Spring IOC中AbstractBeanFactory实现了创建bean的基本逻辑，子类实现containsBeanDefinition、createBean等抽象方法完成具体逻辑
+      ```
+
+      #### 策略模式
+      ```
+      Spring AOP中DefaultAopProxyFactory创建代理时会根据配置选择代理的实现，可选的有JdkDynamicAopProxy和ObjenesisCglibAopProxy、这两个类都实现了AopProxy接口
+      ```
+      </details>  
+
 - JVM相关
   - 垃圾回收算法
     - <details><summary>标记-清除</summary>
@@ -774,7 +813,7 @@
 
       - invokestatic 调用静态方法，解析时方法即可确定
       - invokespecial 调用实例构造器<init>方法、私有方法和父类方法，解析时方法即可确定
-      - invokevirtual 调用所有虚方法（final修饰的方法也用该指令调用，但是final方法不是虚方法）
+      - invokevirtual 调用所有虚方法（final修饰的方法也用该指令调用，但是final方法不是虚方法，虚方法可以理解为所有可以被重写的方法都是虚方法，虚方法的调用是在运行时确定的）
       - invokeinterface 调用接口方法，在运行时确定一个实现此接口的对象
       - invokedynamic 运行时解析限定符所引用的方法，再调用
 
@@ -828,6 +867,133 @@
 
 - 网络
   - HTTPS和HTTP
+    - <details><summary>HTTP1.0/1.1/2.0</summary>
+      
+      ```
+      状态代码 状态信息 含义
+      100 Continue 初始的请求已经接受，客户应当继续发送请求的其余部分。（HTTP 1.1新）
+      101 Switching Protocols 服务器将遵从客户的请求转换到另外一种协议（HTTP 1.1新）
+      200 OK 一切正常，对GET和POST请求的应答文档跟在后面。
+      201 Created 服务器已经创建了文档，Location头给出了它的URL。
+      202 Accepted 已经接受请求，但处理尚未完成。
+      203 Non-Authoritative Information 文档已经正常地返回，但一些应答头可能不正确，因为使用的是文档的拷贝（HTTP 1.1新）。
+      204 No Content 没有新文档，浏览器应该继续显示原来的文档。如果用户定期地刷新页面，而Servlet可以确定用户文档足够新，这个状态代码是很有用的。
+      205 Reset Content 没有新的内容，但浏览器应该重置它所显示的内容。用来强制浏览器清除表单输入内容（HTTP 1.1新）。
+      206 Partial Content 客户发送了一个带有Range头的GET请求，服务器完成了它（HTTP 1.1新）。
+      300 Multiple Choices 客户请求的文档可以在多个位置找到，这些位置已经在返回的文档内列出。如果服务器要提出优先选择，则应该在Location应答头指明。
+      301 Moved Permanently 客户请求的文档在其他地方，新的URL在Location头中给出，浏览器应该自动地访问新的URL。
+      302 Found 类似于301，但新的URL应该被视为临时性的替代，而不是永久性的。注意，在HTTP1.0中对应的状态信息是“Moved Temporatily”。
+      出现该状态代码时，浏览器能够自动访问新的URL，因此它是一个很有用的状态代码。
+      注意这个状态代码有时候可以和301替换使用。例如，如果浏览器错误地请求http://host/~user（缺少了后面的斜杠），有的服务器返回301，有的则返回302。
+      严格地说，我们只能假定只有当原来的请求是GET时浏览器才会自动重定向。请参见307。
+      303 See Other 类似于301/302，不同之处在于，如果原来的请求是POST，Location头指定的重定向目标文档应该通过GET提取（HTTP 1.1新）。
+      304 Not Modified 客户端有缓冲的文档并发出了一个条件性的请求（一般是提供If-Modified-Since头表示客户只想比指定日期更新的文档）。服务器告诉客户，原来缓冲的文档还可以继续使用。
+      305 Use Proxy 客户请求的文档应该通过Location头所指明的代理服务器提取（HTTP 1.1新）。
+      307 Temporary Redirect 和302（Found）相同。许多浏览器会错误地响应302应答进行重定向，即使原来的请求是POST，即使它实际上只能在POST请求的应答是303时 才能重定向。由于这个原因，HTTP 1.1新增了307，以便更加清除地区分几个状态代码：当出现303应答时，浏览器可以跟随重定向的GET和POST请求；如果是307应答，则浏览器只能跟随对GET请求的重定向。（HTTP 1.1新）
+      400 Bad Request 请求出现语法错误。
+      401 Unauthorized 客户试图未经授权访问受密码保护的页面。应答中会包含一个WWW-Authenticate头，浏览器据此显示用户名字/密码对话框，然后在填写合适的Authorization头后再次发出请求。
+      403 Forbidden 资源不可用。服务器理解客户的请求，但拒绝处理它。通常由于服务器上文件或目录的权限设置导致。
+      404 Not Found 无法找到指定位置的资源。这也是一个常用的应答。
+      405 Method Not Allowed 请求方法（GET、POST、HEAD、DELETE、PUT、TRACE等）对指定的资源不适用。（HTTP 1.1新）
+      406 Not Acceptable 指定的资源已经找到，但它的MIME类型和客户在Accpet头中所指定的不兼容（HTTP 1.1新）。
+      407 Proxy Authentication Required 类似于401，表示客户必须先经过代理服务器的授权。（HTTP 1.1新）
+      408 Request Timeout 在服务器许可的等待时间内，客户一直没有发出任何请求。客户可以在以后重复同一请求。（HTTP 1.1新）
+      409 Conflict 通常和PUT请求有关。由于请求和资源的当前状态相冲突，因此请求不能成功。（HTTP 1.1新）
+      410 Gone 所请求的文档已经不再可用，而且服务器不知道应该重定向到哪一个地址。它和404的不同在于，返回407表示文档永久地离开了指定的位置，而404表示由于未知的原因文档不可用。（HTTP 1.1新）
+      411 Length Required 服务器不能处理请求，除非客户发送一个Content-Length头。（HTTP 1.1新）
+      412 Precondition Failed 请求头中指定的一些前提条件失败（HTTP 1.1新）。
+      413 Request Entity Too Large 目标文档的大小超过服务器当前愿意处理的大小。如果服务器认为自己能够稍后再处理该请求，则应该提供一个Retry-After头（HTTP 1.1新）。
+      414 Request URI Too Long URI太长（HTTP 1.1新）。
+      416 Requested Range Not Satisfiable 服务器不能满足客户在请求中指定的Range头。（HTTP 1.1新）
+      500 Internal Server Error 服务器遇到了意料不到的情况，不能完成客户的请求。
+      501 Not Implemented 服务器不支持实现请求所需要的功能。例如，客户发出了一个服务器不支持的PUT请求。
+      502 Bad Gateway 服务器作为网关或者代理时，为了完成请求访问下一个服务器，但该服务器返回了非法的应答。
+      503 Service Unavailable 服务器由于维护或者负载过重未能应答。例如，Servlet可能在数据库连接池已满的情况下返回503。服务器返回503时可以提供一个Retry-After头。
+      504 Gateway Timeout 由作为代理或网关的服务器使用，表示不能及时地从远程服务器获得应答。（HTTP 1.1新）
+      505 HTTP Version Not Supported 服务器不支持请求中所指明的HTTP版本。（HTTP 1.1新）
+      ```
+      </details>
+
+    - <details><summary>HTTP1.0/1.1/2.0</summary>
+
+      #### HTTP1.0
+      ```
+      HTTP协议老的标准是HTTP/1.0，HTTP 1.0规定浏览器与服务器只保持短暂的连接，浏览器的每次请求都需要与服务器建立一个TCP连接，服务器完成请求处理后立即断开TCP连接，服务器不跟踪每个客户也不记录过去的请求，连接无法复用会导致每次请求都经历三次握手和慢启动。三次握手在高延迟的场景下影响较明显，慢启动则对文件类大请求影响较大
+      ```
+
+      #### HTTP1.1
+      ```
+      为了克服HTTP 1.0的这个缺陷，HTTP 1.1支持持久连接，并且在一个TCP连接上可以传送多个HTTP请求和响应，减少了建立和关闭连接的消耗和延迟。一个包含有许多图像的网页文件的多个请求和应答可以在一个连接中传输。HTTP 1.1还允许客户端不用等待上一次请求结果返回，就可以发出下一次请求，但服务器端必须按照接收到客户端请求的先后顺序依次回送响应结果，以保证客户端能够区分出每次请求的响应内容
+
+      在http1.1，request和reponse头中都有可能出现一个connection的头，此header的含义是当client和server通信时对于长链接如何进行处理。
+      在http1.1中，client和server都是默认对方支持长链接的，如果client使用http1.1协议，但又不希望使用长链接，则需要在header中指明connection的值为close；如果server方也不想支持长链接，则在response中也需要明确说明connection的值为close。Connection请求头的值为Keep-Alive时，客户端通知服务器返回本次请求结果后保持连接
+
+      HTTP/1.0不支持文件断点续传，RANGE:bytes是HTTP/1.1新增内容，HTTP/1.0每次传送文件都是从文件头开始，即0字节处开始。RANGE:bytes=XXXX表示要求服务器从文件XXXX字节处开始传送，这就是我们平时所说的断点续传
+
+      在HTTP1.0中认为每台服务器都绑定一个唯一的IP地址，因此，请求消息中的URL并没有传递主机名（hostname）。但随着虚拟主机技术的发展，在一台物理服务器上可以存在多个虚拟主机，并且它们共享一个IP地址
+      HTTP1.1的请求消息和响应消息都应支持Host头域，且请求消息中如果没有Host头域会报告一个错误，如：
+      Host: www.w3.org
+
+      由于HTTP 1.0不支持Host请求头字段，WEB浏览器无法使用主机头名来明确表示要访问服务器上的哪个WEB站点，这样就无法使用WEB服务器在同一个IP地址和端口号上配置多个虚拟WEB站点。在HTTP 1.1中增加Host请求头字段后，WEB浏览器可以使用主机头名来明确表示要访问服务器上的哪个WEB站点，这才实现了在一台WEB服务器上可以在同一个IP地址和端口号上使用不同的主机名来创建多个虚拟WEB站点
+
+      HTTP1.1还有Entity Tags，即ETag，用于表示缓存版本号
+
+      HTTP1.1增加了OPTIONS,PUT, DELETE, TRACE, CONNECT这些Request方法
+
+      HTTP/1.0中，If-Modified-Since头域使用的是绝对时间戳，精确到秒，但使用绝对时间会带来不同机器上的时钟同步问题。而HTTP/1.1中引入了一个ETag头域用于重激活机制，它的值entity tag可以用来唯一的描述一个资源。请求消息中可以使用If-None-Match头域来匹配资源的entitytag是否有变化
+
+      为了使caching机制更加灵活，HTTP/1.1增加了Cache-Control头域（请求消息和响应消息都可使用），它支持一个可扩展的指令子集：例如max-age指令支持相对时间戳；private和no-store指令禁止对象被缓存；no-transform阻止Proxy进行任何改变响应的行为
+
+      Cache使用关键字索引在磁盘中缓存的对象，在HTTP/1.0中使用资源的URL作为关键字。但可能存在不同的资源基于同一个URL的情况，要区别它们还需要客户端提供更多的信息，如Accept-Language和Accept-Charset头域。为了支持这种内容协商机制(content negotiation mechanism)，HTTP/1.1在响应消息中引入了Vary头域，该头域列出了请求消息中需要包含哪些头域用于内容协商
+      ```
+
+      #### HTTP2.0
+      ```
+      HTTP1.x有以下几个主要缺点：
+      HTTP/1.0一次只允许在一个TCP连接上发起一个请求，HTTP/1.1使用的流水线技术也只能部分处理请求并发，仍然会存在队列头阻塞问题，因此客户端在需要发起多次请求时，通常会采用建立多连接来减少延迟
+      单向请求，只能由客户端发起
+      请求报文与响应报文首部信息冗余量大
+      数据未压缩，导致数据的传输量大
+
+      HTTP2.0特点
+      1. 二进制传输：HTTP2.0中所有加强性能的核心是二进制传输，在HTTP1.x中，我们是通过文本的方式传输数据。基于文本的方式传输数据存在很多缺陷，文本的表现形式有多样性，因此要做到健壮性考虑的场景必然有很多，但是二进制则不同，只有0和1的组合，因此选择了二进制传输，实现方便且健壮。在HTTP2.0中引入了新的编码机制，所有传输的数据都会被分割，并采用二进制格式编码
+      为了保证HTTP不受影响，那就需要在应用层（HTTP2.0）和传输层（TCP or UDP）之间增加一个二进制分帧层。在二进制分帧层上，HTTP2.0会将所有传输的信息分为更小的消息和帧，并采用二进制格式编码，其中HTTP1.x的首部信息会被封装到Headers帧，而Request Body则封装到Data帧
+      2. 多路复用：HTTP2.0中，有两个概念非常重要：帧（frame）和流（stream）。帧是最小的数据单位，每个帧会标识出该帧属于哪个流，流是多个帧组成的数据流。所谓多路复用，即在一个TCP连接中存在多个流，即可以同时发送多个请求，对端可以通过帧中的表示知道该帧属于哪个请求。在客户端，这些帧乱序发送，到对端后再根据每个帧首部的流标识符重新组装。通过该技术，可以避免HTTP旧版本的队头阻塞问题，极大提高传输性能
+      3. Header压缩：在HTTP1.0中，我们使用文本的形式传输header，在header中携带cookie的话，每次都需要重复传输几百到几千的字节，这着实是一笔不小的开销。在HTTP2.0中，使用了HPACK（HTTP2头部压缩算法）压缩格式对传输的header进行编码，减少了header的大小。并在两端维护了索引表，用于记录出现过的header，后面在传输过程中就可以传输已经记录过的header的键名，对端收到数据后就可以通过键名找到对应的值
+      4. 服务器Push：在HTTP2.0中，服务端可以在客户端某个请求后，主动推送其他资源。可以想象一下，某些资源客户端是一定会请求的，这时就可以采取服务端push的技术，提前给客户端推送必要的资源，就可以相对减少一点延迟时间。在浏览器兼容的情况下也可以使用prefetch
+
+      ```
+
+    - <details><summary>QUIC</summary>
+
+      ```
+      Quic 相比现在广泛应用的 http2+tcp+tls协议有如下优势：
+      减少了TCP三次握手及TLS握手时间
+      改进的拥塞控制
+      避免队头阻塞的多路复用
+      连接迁移
+      前向冗余纠错
+
+      为什么需要QUIC：
+      1. 中间设备的僵化：TCP协议使用得太久，也非常可靠。所以很多中间设备，包括防火墙、NAT 网关，整流器等出现了一些约定俗成的动作。比如有些防火墙只允许通过80和443，不放通其他端口。NAT网关在转换网络地址时重写传输层的头部，有可能导致双方无法使用新的传输格式。整流器和中间代理有时候出于安全的需要，会删除一些它们不认识的选项字段。这些干扰，也导致很多在TCP协议上的优化变得小心谨慎，步履维艰
+      2. 依赖于操作系统的实现导致协议僵化：TCP是由操作系统在内核西方栈层面实现的，应用程序只能使用，不能直接修改。虽然应用程序的更新迭代非常快速和简单。但是TCP的迭代却非常缓慢，原因就是操作系统升级很麻烦
+      3. 建立连接的握手延迟大：不管是HTTP1.0/1.1还是HTTPS，HTTP2，都使用了TCP进行传输。HTTPS和HTTP2还需要使用TLS协议来进行安全传输。这就出现了两个握手延迟
+      4. 队头阻塞：队头阻塞主要是TCP协议的可靠性机制引入的。TCP使用序列号来标识数据的顺序，数据必须按照顺序处理，如果前面的数据丢失，后面的数据就算到达了也不会通知应用层来处理
+
+      所以QUIC协议选择了UDP，因为UDP本身没有连接的概念，不需要三次握手，优化了连接建立的握手延迟，同时在应用程序层面实现了TCP的可靠性，TLS的安全性和HTTP2的并发性，只需要用户端和服务端的应用程序支持QUIC协议，完全避开了操作系统和中间设备的限制
+      
+      其他优势：
+      1. QUIC核心特性连接建立延时低，没有了三次握手的消耗
+      2. 改进的拥塞控制：TCP的拥塞控制实际上包含了四个算法：慢启动，拥塞避免，快速重传，快速恢复，从拥塞算法本身来看，QUIC只是按照TCP协议重新实现了一遍，那么QUIC协议到底改进在哪些方面呢？主要有如下几点：
+         1. 可插拔：能够非常灵活地生效，变更和停止，应用程序层面就能实现不同的拥塞控制算法，不需要操作系统，不需要内核支持
+         2. 单调递增的Packet Number：TCP为了保证可靠性，使用了基于字节序号的Sequence Number及Ack来确认消息的有序到达。QUIC同样是一个可靠的协议，它使用Packet Number代替了TCP的sequence number，并且每个Packet Number都严格递增，也就是说就算Packet N丢失了，重传的 Packet N的Packet Number已经不是 N，而是一个比N大的值。而TCP呢，重传segment的sequence number和原始的segment的Sequence Number保持不变，也正是由于这个特性，引入了Tcp重传的歧义问题，超时事件RTO发生后，客户端发起重传，然后接收到了Ack数据。由于序列号一样，这个Ack数据到底是原始请求的响应还是重传请求的响应呢？不好判断。由于 Quic 重传的 Packet 和原始 Packet 的 Pakcet Number 是严格递增的，所以很容易就解决了这个问题。但是单纯依靠严格递增的 Packet Number 肯定是无法保证数据的顺序性和可靠性。QUIC 又引入了一个 Stream Offset 的概念。即一个 Stream 可以经过多个 Packet 传输，Packet Number 严格递增，没有依赖。但是 Packet 里的 Payload 如果是 Stream 的话，就需要依靠 Stream 的 Offset 来保证应用数据的顺序。如错误! 未找到引用源。所示，发送端先后发送了 Pakcet N 和 Pakcet N+1，Stream 的 Offset 分别是 x 和 x+y。假设 Packet N 丢失了，发起重传，重传的 Packet Number 是 N+2，但是它的 Stream 的 Offset 依然是 x，这样就算 Packet N + 2 是后到的，依然可以将 Stream x 和 Stream x+y 按照顺序组织起来，交给应用程序处理
+      3. 没有队头阻塞的多路复用：QUIC的多路复用和HTTP2类似。在一条QUIC连接上可以并发发送多个HTTP请求 (stream)。但是QUIC的多路复用相比HTTP2有一个很大的优势，QUIC一个连接上的多个stream之间没有依赖。这样假如stream2丢了一个udp packet，也只会影响stream2的处理。不会影响stream2之前及之后的stream的处理，这也就在很大程度上缓解甚至消除了队头阻塞的影响。多路复用是HTTP2最强大的特性，能够将多条请求在一条TCP连接上同时发出去。但也恶化了TCP的一个问题，队头阻塞。HTTP2在一个 TCP 连接上同时发送 4 个 Stream。其中 Stream1 已经正确到达，并被应用层读取。但是 Stream2 的第三个 tcp segment 丢失了，TCP 为了保证数据的可靠性，需要发送端重传第 3 个 segment 才能通知应用层读取接下去的数据，虽然这个时候 Stream3 和 Stream4 的全部数据已经到达了接收端，但都被阻塞住了
+      4. 连接迁移：任何一条QUIC连接不再以IP及端口四元组标识，而是以一个64位的随机数作为ID来标识，这样就算IP或者端口发生变化时，只要ID不变，这条连接依然维持着，上层业务逻辑感知不到变化，不会中断，也就不需要重连
+      ...
+      ```
+
+      </details> 
+
     - <details><summary>HTTPS</summary>
 
       HTTPS相比HTTP多了一层SSL/TLS（安全套接字层/传输层安全）
@@ -950,7 +1116,7 @@
       1. 最基本的传输可靠性来源于“确认重传”机制。
       2. TCP的滑动窗口的可靠性也是建立在“确认重传”基础上的。
       3. 发送窗口只有收到对端对于本段发送窗口内字节的ACK确认，才会移动发送窗口的左边界。
-      4. 接收窗口只有在前面所有的段都确认的情况下才会移动左边界。当在前面还有字节未接收但收到后面字节的情况下，窗口不会移动，并不对后续字节确认。以此确保对端会对这些数据重传。业转载请联系作者获得授权，非商业转载请注明出处。
+      4. 接收窗口只有在前面所有的段都确认的情况下才会移动左边界。当在前面还有字节未接收但收到后面字节的情况下，窗口不会移动，并不对后续字节确认。以此确保对端会对这些数据重传
       ```
 
       #### 慢启动
@@ -990,7 +1156,7 @@
           第一范式：字段不可分割
           第二范式：非主属性必须完全依赖主属性，换句话说就是非主属性不能部分依赖主属性，如果主属性有多个列，每个非主属性必须有所有主属性的列来确定，而不是一部分主属性列，不满足第二范式会导致数据冗余
           第三范式：任何非主属性不依赖于其它非主属性，也就是非主属性不能推出另一个非主属性
-          BCNF：主属性不能依赖部分非主属性
+          BCNF：主属性不能依赖非主属性
           ```
 
           [如何理解关系型数据库的常见设计范式？ - 刘慰的回答 - 知乎](https://www.zhihu.com/question/24696366/answer/29189700)
@@ -1280,7 +1446,6 @@
         如果like是以'%'开始的，则该列上的索引不会被使用
         如果列为字符串，则where条件中必须将字符常量值加引号，否则即使该列上存在索引，也不会被使用。例如：select * from table_name where key1=1，如果key1列保存的是字符串，即使key1上有索引，也不会被使用
         WHERE字句的查询条件里有不等于号（WHERE column != ...）或<>操作符，索引无效
-        where条件是WHERE colume = null，索引无效
         where语句的等号左边进行函数、算术运算或其他表达式运算时，索引无效
         ```
         </details>
@@ -1823,7 +1988,13 @@
       A系统和消息实现了消息事务，此时B系统订阅消息，只要消息事务成功，那么A操作一定成功，消息也一定发出来了，这时候B会收到消息去执行本地操作，如果本地操作失败，消息会重投，直到B操作成功，这样就变相地实现了A与B的分布式事务
       ```
 
-      </details> 
+      </details>
+
+    - <details><summary>Raft算法</summary> 
+
+      https://zhuanlan.zhihu.com/p/32052223
+
+      </details>
 
 - 其他
   - <details><summary>如何实现接口幂等</summary>
@@ -1851,3 +2022,58 @@
     ```
     </details>  
 
+  - <details><summary>常见的加密算法</summary>
+
+      #### MD5算法
+      ```
+      MD5用的是哈希函数，它的典型应用是对一段信息产生信息摘要，以防止被篡改。严格来说，MD5不是一种加密算法而是摘要算法。无论是多长的输入，MD5都会输出长度为128bits的一个串，MD5加密后的串不可逆
+      ```
+
+      #### SHA1算法
+      ```
+      SHA1是和MD5一样流行的消息摘要算法，然而SHA1比MD5的安全性更强。对于长度小于2 ^ 64位的消息，SHA1会产生一个160位的消息摘要。基于MD5、SHA1的信息摘要特性以及不可逆 (一般而言)，可以被应用在检查文件完整性以及数字签名 等场景
+      ```
+
+      #### HMAC算法
+      ```
+      HMAC是密钥相关的哈希运算消息认证码（Hash-based Message Authentication Code），HMAC运算利用哈希算法 (MD5、SHA1 等)，以一个密钥和一个消息为输入，生成一个消息摘要作为输出。
+      HMAC发送方和接收方都有的key进行计算，而没有这把key的第三方，则是无法计算出正确的散列值的，这样就可以防止数据被篡改
+      ```
+
+      #### AES/DES/3DES算法
+      ```
+      AES、DES、3DES都是对称的块加密算法，加解密的过程是可逆的。常用的有AES128、AES192、AES256
+
+      DES加密算法是一种分组密码，以64位为分组对数据加密，它的密钥长度是56位，加密解密用同一算法。
+      DES加密算法是对密钥进行保密，而公开算法，包括加密和解密算法。这样，只有掌握了和发送方 相同密钥的人才能解读由 DES加密算法加密的密文数据。因此，破译DES加密算法实际上就是搜索密钥的编码。对于56位长度的 密钥来说，如果用 穷举法来进行搜索的话，其运算次数为 2 ^ 56 次
+
+      AES为分组密码，分组密码也就是把明文分成一组一组的，每组长度相等，每次加密一组数据，直到加密完整个明文。在AES标准规范中，分组长度只能是128位，也就是说，每个分组为16个字节（每个字节8位）。密钥的长度可以使用128位、192位或256位
+      ```
+
+      #### RSA算法
+      ```
+      RSA加密算法是目前最有影响力的公钥加密算法，并且被普遍认为是目前最优秀的公钥方案之一。RSA是第一个能同时用于加密和数字签名的算法，它能够抵抗到目前为止已知的所有密码攻击，已被ISO推荐为公钥数据加密标准
+
+      RSA加密算法基于一个十分简单的数论事实：将两个大素数相乘十分容易，但想要对其乘积进行因式分解却极其困难，因此可以将乘积公开作为加密密钥
+      ```
+
+      </details>
+
+  - 高并发场景
+    - <details><summary>秒杀系统设计</summary>
+
+      #### 前端动静分离
+      ```
+      整个页面Cache在用户浏览器
+      如果强制刷新整个页面，也会请求到CDN
+      实际有效请求只是“刷新抢宝”按钮
+
+      同时可以限制用户刷新频率，后台限制单一用户请求次数
+      ```
+
+      #### 基于时间分片削峰
+      ```
+      按下抢宝按钮后先到答题或验证码页面，将峰值请求拉长
+      ```
+
+      </details>
