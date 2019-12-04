@@ -69,15 +69,14 @@ inode相关::
 ** inode也会消耗硬盘空间，所以硬盘格式化的时候，操作系统自动将硬盘分成两个区域。一个是数据区，存放文件数据；另一个是inode区（inode table），存放inode所包含的信息。
 每个inode节点的大小，一般是128字节或256字节。inode节点的总数，在格式化时就给定，一般是每1KB或每2KB就设置一个inode。假定在一块1GB的硬盘中，每个inode节点的大小为128字节，每1KB就设置一个inode，那么inode table的大小就会达到128MB，占整块硬盘的12.8%，由于每个文件都会占用一个inode，而一个文件至少有一个磁盘块，一个磁盘块只能存一个文件的数据，所以理论上inode的数量不应该大于磁盘块的数量，格式化文件系统的时候可以用-i x选项指定每xKB的磁盘分配一个inode，这个x最好不要小于磁盘块的大小，否则多余的inode没有意义，正如``man mkfs.ext4``中的帮助文档所说：
 +
-[source,shell]
 ----
--i bytes-per-inode # <1>
+-i bytes-per-inode // <1>
        Specify  the  bytes/inode  ratio.   mke2fs creates an inode for every bytes-per-inode bytes of space on the disk.  The larger the bytes-per-inode ratio, the fewer inodes will be
        created.  This value generally shouldn't be smaller than the blocksize of the filesystem, since in that case more inodes would be made than can ever be used.  Be warned that  it
        is  not  possible to change this ratio on a filesystem after it is created, so be careful deciding the correct value for this parameter.  Note that resizing a filesystem changes
        the numer of inodes to maintain this ratio.
 
--I inode-size # <2>
+-I inode-size // <2>
        Specify the size of each inode in bytes.  The inode-size value must be a power of 2 larger or equal to 128.  The larger the inode-size the more space the inode table  will  con‐
        sume, and this reduces the usable space in the filesystem and can also negatively impact performance.  It is not possible to change this value after the filesystem is created.
 
