@@ -86,6 +86,7 @@ inode相关::
        The default inode size is controlled by the mke2fs.conf(5) file.  In the mke2fs.conf file shipped with e2fsprogs, the default inode size is 256  bytes  for  most  file  systems,
        except for small file systems where the inode size will be 128 bytes.
 ----
++
 . bytes-per-inode就是上面说的每xKB的磁盘分配一个inode的x的值
 . inode-size参数表示的是inode本身的大小，inode保存了文件占用的磁盘块号，所以inode的大小直接决定了其能表示的磁盘块号的数量，也就直接决定了单个文件的大小上限，一个磁盘块号占用4Byte，如果一个文件大小400MB，每个磁盘块4K，则inode中至少需要保存10万的磁盘块号，很明显一个inode是放不下这么多数据的，所以系统会将inode记录block号码的区域定义为12个直接磁盘块号记录区，一个间接磁盘块号记录区, 一个双间接与一个三间接磁盘号记录区，这样对于一个磁盘块大小为1K的inde，可以表示的最大大小是：
 12个直接指向：12*1K=12K
