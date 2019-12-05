@@ -2079,3 +2079,47 @@
       ```
 
       </details>
+  
+  - MVC、MVP和MVVM
+    - <details><summary>MVC</summary>
+       
+      #### MVC介绍
+      ```
+      MVC分别是：
+      视图（View）：完成数据到视图的渲染显示逻辑。
+      控制器（Controller）：连接View和Model，用于控制应用程序的流程，响应用户对View的操作，调用Model的接口对数据进行操作并在Model变化后通知视图进行更新
+      模型（Model）：封装业务逻辑相关的数据及这些数据的处理方法
+
+      通信方式：
+      View传送指令到Controller
+      Controller要求Model改变状态，并在Model改变之后通知视图进行更新
+      Model将新的数据发送到View，用户得到反馈，获取可以理解为View从Model获取新的数据再进行展示
+
+      MVC优点：
+      耦合性低
+
+      MVC的缺点：
+      View和Controller一般是一一对应的，捆绑起来表示一个组件，视图与控制器间的过于紧密的连接让Controller的复用性成了问题
+      View的数据完全来自Model，Model难以符合复杂多变的View端变化，也就是Model也是难以复用的
+      ```
+      </details>
+
+    - <details><summary>MVP</summary>
+       
+      #### MVP介绍
+      ```
+      MVP模式将MVC的Controller改名为Presenter，Presenter持有Model和View，Model和View不直接交互，主要的程序逻辑在Presenter里实现。Presenter与具体的View是没有直接关联的，而是通过定义好的接口进行交互，也就是Presenter持有的是View的接口，从而使得在变更View的时候可以保持Presenter的不变，即重用，同时Presenter持有Model的接口，Model的变更也不影响Presenter和View
+
+      MVP的优点：
+      Model与View完全分离，修改View不会影响Model
+      由于Presenter使用的是View和Model的接口，所以View和Model的改变也不会影响Presenter的逻辑
+      ```
+      </details>
+    
+    - <details><summary>MVVM</summary>
+       
+      #### MVVM介绍
+      ```
+      MVVM模式没有了Presenter，取而代之的是ViewModel（Model of View），MVVM中的Model只负责保存数据，View只负责展示数据，ViewModel负责将View的变化更新到Model，同时负责将Model的变化更新到View，也就是实现了双向绑定，类似AngularJs，使得开发人员只需要关注Model的变化，让MVVM框架去自动更新View（对于前端页面来说就是DOM）状态，从而把开发者从操作View更新的繁琐步骤中解脱出来
+      ```
+      </details>
