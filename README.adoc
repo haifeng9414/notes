@@ -70,13 +70,13 @@ inode相关::
 每个inode节点的大小，一般是128字节或256字节。inode节点的总数，在格式化时就给定，一般是每1KB或每2KB就设置一个inode。假定在一块1GB的硬盘中，每个inode节点的大小为128字节，每1KB就设置一个inode，那么inode table的大小就会达到128MB，占整块硬盘的12.8%，由于每个文件都会占用一个inode，而一个文件至少有一个磁盘块，一个磁盘块只能存一个文件的数据，所以理论上inode的数量不应该大于磁盘块的数量，格式化文件系统的时候可以用-i x选项指定每xKB的磁盘分配一个inode，这个x最好不要小于磁盘块的大小，否则多余的inode没有意义，正如``man mkfs.ext4``中的帮助文档所说：
 +
 ----
--i bytes-per-inode // <1>
+-i bytes-per-inode <1>
        Specify  the  bytes/inode  ratio.   mke2fs creates an inode for every bytes-per-inode bytes of space on the disk.  The larger the bytes-per-inode ratio, the fewer inodes will be
        created.  This value generally shouldn't be smaller than the blocksize of the filesystem, since in that case more inodes would be made than can ever be used.  Be warned that  it
        is  not  possible to change this ratio on a filesystem after it is created, so be careful deciding the correct value for this parameter.  Note that resizing a filesystem changes
        the numer of inodes to maintain this ratio.
 
--I inode-size // <2>
+-I inode-size <2>
        Specify the size of each inode in bytes.  The inode-size value must be a power of 2 larger or equal to 128.  The larger the inode-size the more space the inode table  will  con‐
        sume, and this reduces the usable space in the filesystem and can also negatively impact performance.  It is not possible to change this value after the filesystem is created.
 
@@ -86,8 +86,8 @@ inode相关::
        The default inode size is controlled by the mke2fs.conf(5) file.  In the mke2fs.conf file shipped with e2fsprogs, the default inode size is 256  bytes  for  most  file  systems,
        except for small file systems where the inode size will be 128 bytes.
 ----
-<1> bytes-per-inode就是上面说的每xKB的磁盘分配一个inode的x的值
-<2> inode-size参数表示的是inode本身的大小，inode保存了文件占用的磁盘块号，所以inode的大小直接决定了其能表示的磁盘块号的数量，也就直接决定了单个文件的大小上限，一个磁盘块号占用4Byte，如果一个文件大小400MB，每个磁盘块4K，则inode中至少需要保存10万的磁盘块号，很明显一个inode是放不下这么多数据的，所以系统会将inode记录block号码的区域定义为12个直接磁盘块号记录区，一个间接磁盘块号记录区, 一个双间接与一个三间接磁盘号记录区，这样对于一个磁盘块大小为1K的inde，可以表示的最大大小是：
+. bytes-per-inode就是上面说的每xKB的磁盘分配一个inode的x的值
+. inode-size参数表示的是inode本身的大小，inode保存了文件占用的磁盘块号，所以inode的大小直接决定了其能表示的磁盘块号的数量，也就直接决定了单个文件的大小上限，一个磁盘块号占用4Byte，如果一个文件大小400MB，每个磁盘块4K，则inode中至少需要保存10万的磁盘块号，很明显一个inode是放不下这么多数据的，所以系统会将inode记录block号码的区域定义为12个直接磁盘块号记录区，一个间接磁盘块号记录区, 一个双间接与一个三间接磁盘号记录区，这样对于一个磁盘块大小为1K的inde，可以表示的最大大小是：
 12个直接指向：12*1K=12K
 间接：256*1K=256K，因为磁盘块大小为1K，每个磁盘号占4Byte，所以一个磁盘块能表示256个磁盘块号
 双间接：256*256*1K=65536
