@@ -2036,8 +2036,7 @@
     ##### 例4
     ![BasicPaxos4](resources/BasicPaxos4.jpg)
     该例子说明的是Basic Paxos的活锁的问题，S1和S5交替发出Prepare请求，每次Prepare请求的Proposal ID都是递增的，使得S1和S5交替Prepare成功，而Accept失败，形成活锁，对于这个问题，在实现Basic Paxos协议时可以用一些工程手段避免或者减少这种问题的发送，Basic Paxos算法本身无法避免这种情况
-    </details>
-  
+
     #### Multi Paxos
     Basic Paxos存在活锁问题，而且Basic Paxos只能对一个值进行决议，形成决议至少需要两次网络交互，这些问题使得Basic Paxos只能作为理论基础，实际工程使用的是Multi Paxos算法，Multi Paxos算法能够连续决议多个值，而且有更高的效率，Multi Paxos基于Basic Paxos做了两点改进：
     1. 针对每一个要决议的值，运行一次Paxos算法实例（Instance），形成决议。每一个Paxos实例使用唯一的Instance ID标识，也就是每次决议值的时候，这次决议过程本身有一个Instance ID进行标识
@@ -2045,7 +2044,6 @@
 
     Multi Paxos首先需要选举Leader，Leader的确定也是一次决议的形成，所以可执行一次Basic Paxos实例来选举出一个Leader。选出Leader之后只能由Leader提交Proposal，在Leader宕机之后服务临时不可用，需要重新选举Leader继续服务。在系统中仅有一个Leader进行Proposal提交的情况下，Prepare阶段可以跳过
     Multi Paxos通过改变Prepare阶段的作用范围至后面Leader提交的所有实例（实例的意思是决议一个值的过程），也就是Leader提交的所有实例默认已经执行了Prepare阶段，从而使得连续提交只需要执行一次Prepare阶段确定Leader，后续只需要执行Accept阶段，将两阶段变为一阶段，提高了效率。为了区分连续提交的多个实例，每个实例使用一个Instance ID标识，Instance ID由Leader本地递增生成即可
-
     </details>
   
   - <details><summary>Raft算法</summary>
@@ -2321,7 +2319,7 @@
     2. 系统当前状态，如副本的这次快照的多条日志对变量x进行更新，则会记录最后x的值
 
     ![Raft6](resources/Raft6.png)
-    
+
     上图中一个副本用新的快照替换了从1到5的条目，快照值存储了当前的状态。快照中包含了最后的索引位置和任期号
 
     为了支持集群成员更新，快照中也将最后的一次集群成员配置作为最后一个条目存下来。
