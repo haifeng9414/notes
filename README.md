@@ -1990,8 +1990,7 @@
 
       </details>
   
-  - <details><summary>Paxos算法</summary> 
-
+  - <details><summary>Paxos算法</summary>
     #### Basic Paxos
     Basic Paxos中所有的副本是平等的，大家都同时具备Proposer、Acceptor、Learner角色，Basic Paxos的流程是：
     1. Prepare阶段：某一时刻一个副本想要提议一个值，那么它作为Proposer向所有副本广播Prepare请求，请求中只有提案编号（Proposal ID），Proposal ID是全局唯一且递增的（可使用时间戳加Server ID生成），其他副本作为Acceptor接收到Prepare请求后做出两个承诺和一个应答，分别是：
