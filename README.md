@@ -3006,6 +3006,117 @@
       按下抢宝按钮后先到答题或验证码页面，将峰值请求拉长
       ```
 
+      #### 限流
+      限制系统的输入和输出流量，一旦达到的需要限制的阈值，就采取一些措施对流量进行限制，如延迟处理，拒绝处理，或者部分拒绝处理等等
+
+      其实通过消息队列就可以限流了，请求到来时将请求发送到消息队列，后台任务从消息队列获取消息，高并发请求会堆积在消息队列，请求的执行速率只和后台线程的数量和处理速率有关，下面介绍几种限流算法，在高并发场景下这些算法应该没有使用消息队列灵活把
+
+      限流的算法：
+      ##### 计数器
+      计数器是最简单粗暴的算法，比如某个服务最多只能每秒钟处理100个请求。可以设置一个1秒钟的滑动窗口，窗口中有10个格子，每个格子100毫秒，每100毫秒移动一次，每次移动都需要记录当前服务请求的次数，当滑动窗口的格子划分的越多，那么滑动窗口的滚动就越平滑，限流的统计就会越精确
+      ```
+      // 服务访问次数，可以放在Redis中，实现分布式系统的访问计数，每当系统收到一个请求就将该值 + 1
+      Long counter = 0L;
+      // 使用LinkedList来模拟滑动窗口的10个格子
+      LinkedList<Long> ll = new LinkedList<Long>();
+
+      public static void main(String[] args) {
+          Counter counter = new Counter();
+          counter.doCheck();
+      }
+
+      private void doCheck() {
+        while (true)
+          {
+            // 每次检查是否需要限流时将系统当前的访问次数保存到窗口
+            ll.addLast(counter);
+
+            // 超出窗口大小时移除最老的窗口
+            if (ll.size() > 10){
+                ll.removeFirst();
+            }
+
+            // 滑动窗口的最后一个和第一个创建分别记录了1秒的最开始系统的访问次数和当前系统的访问次数，这里比较最后一个和第一个窗口的差值，当差值大于阈值时执行限流逻辑
+            if ((ll.peekLast() - ll.peekFirst()) > 100) {
+                //To limit rate
+            }
+
+            // 每0.1秒检查一次，针对这个例子，0.1 * 窗口数量 = 1秒，阈值是100，所以限制的是1秒内不能超过100个请求，所以计数器算法缺点很明显，限流限的不是很精确，因为每0.1秒检查一次，两次检查之间系统可能会收到大量请求，需要等待下一次检查才能发现，可以将0.1调小，窗口数量调大，使得限制更精确，但是这也会增加系统负担
+            Thread.sleep(100);
+          }
+      }
+      ```
+
+      ##### 漏桶算法
+      漏桶(Leaky Bucket)算法思路很简单，水（请求）先进入到漏桶里，漏桶以一定的速度出水（接口有响应速率），当水流入速度过大会直接溢出（访问频率超过接口响应速率），然后就拒绝请求，可以看出漏桶算法能强行限制数据的传输速率
+      ```
+      double rate; // 模拟水流出的速率，相当于请求处理的速率
+      double burst; // 模拟桶的大小
+      long refreshTime; // 记录上次执行漏桶计算的时间
+      double water; // 记录当前桶中的水量，也就是允许的请求量
+
+      refreshWater() {
+        // 每次计算时先获取当前时间
+        long now = getTimeOfDay();
+        // 将当前时间减去上次计算时间再乘以水流出的速率，就能得出这段时间内能够处理多数请求，water减去这个值就能得出
+        // 桶里还有多少水，也就是多少请求没有被处理
+        water = max(0, water - (now - refreshTime) * rate);
+        refreshTime = now;
+      }
+
+      bool permissionGranted() {
+        // 每次调用请求前先刷新桶的状态
+        refreshWater();
+        // 如果桶中剩余的水未到阈值，则能够执行请求处理
+        if (water < burst) { // 水桶还没满，继续加1
+          water++;
+          return true;
+        } else {
+          // 否则拒绝处理
+          return false;
+        }
+      }
+      ```
+
+      漏桶算法的缺点也很明显，rate表示接口响应速率，但是rate值很难确定，或者接口的响应速率很难确定，如果速率小了，则会限制系统处理能力，如果速率大了，则可能达不到限流的效果
+
+      ##### 令牌桶算法
+      令牌桶算法是一个存放固定容量令牌（token）的桶，按照固定速率往桶里添加令牌。令牌桶算法基本可以用下面的几个概念来描述：
+      1. 牌将按照固定的速率被放入令牌桶中，比如每秒放10个
+      2. 桶中最多存放b个令牌，当桶满时，新添加的令牌被丢弃或拒绝
+      3. 当一个n个字节大小的数据包到达，将从桶中删除n个令牌，接着数据包被发送到网络上
+      4. 如果桶中的令牌不足n个，则不会删除令牌，且该数据包将被限流（要么丢弃，要么缓冲区等待）
+
+      令牌桶算法和漏桶算法效果一样但方向相反的算法，更加容易理解。随着时间流逝，系统会按恒定1/QPS时间间隔（如果QPS=100，则间隔是10ms）往桶里加入Token（想象和漏桶漏水相反，有个水龙头在不断的加水），如果桶已经满了就不再加了。新请求来临时，会各自拿走一个Token，如果没有Token可拿了就阻塞或者拒绝服务
+
+      令牌桶可以在运行时控制和调整数据处理的速率，处理某时的突发流量。放令牌的频率增加可以提升整体数据处理的速度，而通过每次获取令牌的个数增加或者放慢令牌的发放速度和降低整体数据处理速度。而漏桶不行，因为它的流出速率是固定的，程序处理速度也是固定的
+      ```python
+      import time
+
+      class TokenBucket(object):
+
+        # rate是令牌发放速度，capacity是桶的大小
+        def __init__(self, rate, capacity):
+          self._rate = rate
+          self._capacity = capacity
+          self._current_amount = 0
+          self._last_consume_time = int(time.time())
+
+        # token_amount是发送数据需要的令牌数
+        def consume(self, token_amount):
+          increment = (int(time.time()) - self._last_consume_time) * self._rate  # 计算从上次发送到这次发送，新发放的令牌数量
+          self._current_amount = min(increment + self._current_amount, self._capacity)  # 令牌数量不能超过桶的容量
+
+          if token_amount > self._current_amount:  # 如果没有足够的令牌，则不能发送数据
+            return False
+
+          self._last_consume_time = int(time.time())
+
+          self._current_amount -= token_amount
+            return True
+
+      ```
+
       </details>
   
   - MVC、MVP和MVVM
