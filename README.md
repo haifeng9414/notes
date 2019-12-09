@@ -481,6 +481,72 @@
       </details>  
 
 - JVM相关
+  - <details><summary>运行时区域</summary>
+     
+    - <details><summary>程序计数器</summary>
+
+      程序计数器是一块较小的内存空间，它可以看作是当前线程所执行的字节码的方位指示器，字节码指示器工作时是通过改变计数器的值来选取下一条需要执行的字节码指令，分支，循环，跳转，异常处理，线程恢复等线程的基础功能都需要依赖这个程序计数器。且由于java虚拟机的多线程是通过多个线程轮流切换并分配处理器执行时间的方式来实现的，在某一时间，一个处理器只会处理一条线程，为了就是执行时间到了之后恢复到正确的执行位置，每个线程都有独立的程序计数器，各线程间运行互不影响，独立存储，我们称之为线程独有的内存
+
+      </details>
+    
+    - <details><summary>虚拟机栈</summary>
+
+      虚拟机栈也是线程独有的空间，他的生命周期与线程相同。虚拟机栈描述的是java方法执行的内存模型：即是每个方法执行的时候都会创建一个栈帧用于存储方法相关的数据，如局部变量表，操作数栈，动态链接，方法出口等方法的相关信息。每一个方法执行开始到结束的过程，都对应者一个栈帧在虚拟机栈中入栈到出栈的过程。局部变量里存储java的各种基本类型，对象引用以及返回类型。该区域可能有两种异常，如果线程请求的栈深度大于虚拟机所允许的深度（通过-Xss设置虚拟机栈的内存大小限制，这里说的栈深度，实际上就是栈内存大小的意思），则抛出StackOverflowError，另一个异常是OutOfMemoryError：虚拟机栈占用的是物理内存（由操作系统管理），而不是堆内存，当栈深底变大时会向操作系统申请物理内存，其上限就是可用物理内存的上限，如果物理内存没有足够的可用内存分配给虚拟机栈，则抛出OutOfMemoryError
+
+      </details>
+
+    - <details><summary>本地方法栈</summary>
+
+      本地方法栈与虚拟机栈作用相似。只不过虚拟机栈执行的是java方法，而本地方法栈执行的是Native方法，即本地方法。他也是线程独有的，所以安全
+
+      </details>
+    
+    - <details><summary>堆</summary>
+
+      堆是虚拟机中内存最大的一块，且是所有线程共享的区域，里面只存储对象实例，几乎所有的对象都是在该区域分配对象实例内存。该区域为每一个线程都创建了分配缓冲区（Thread Local Allocation Buffer，TLAB），多线程的情况下在堆中申请内存是不安全的，所以每个线程都单独分配一个内存块，线程申请内存时在自己的空间上分配，这样就不存在竞争的情况，TLAB用满，就新申请一个TLAB（利用cas申请）。配置java堆的大小命令由-Xmx（最大堆大小）和-Xms（初始堆大小）控制
+
+      </details>
+
+    - <details><summary>方法区</summary>
+
+      方法区和堆一样是线程共享的内存，保存的数据有：类信息，常量，静态变量（JDK6时，String等字符串常量的信息是置于方法区中的，但是到了JDK7时，已经移动到了Java堆），即时编译器编译后的数据等。
+
+      当方法区无法满足内存分配需求时，将抛出OutOfMemoryError
+
+      #### 类信息
+      1. 类型全限定名
+      2. 类型的直接超类的全限定名（除非这个类型是java.lang.Object，它没有超类）
+      3. 类型是类类型还是接口类型
+      4. 类型的访问修饰符（public、abstract或final的某个子集）
+      5. 任何直接超接口的全限定名的有序列表
+      6. 类型的常量池
+      7. 字段信息
+      8. 方法信息
+      9. 除了常量以外的所有类（静态）变量
+      10. 一个到类ClassLoader的引用
+      11. 一个到Class类的引用
+
+      JDK8使用元空间替代方法区，元空间存储在物理内存，而不是堆中，这么做减少了方法区出现内存溢出的可能性，元空间大小受物理内存及-XX:MaxMetaspaceSize选项（元空间最大大小）限制
+
+      </details>
+
+    - <details><summary>运行时常量池</summary>
+
+      存储Java类文件常量池中的符号信息，同时还会将这些符号引用所翻译出来的直接引用存储在运行时常量池中，在运行时可以通过代码生成常量并将其放入运行时常量池中，如intern方法
+
+      </details>
+
+    - <details><summary>直接内存</summary>
+
+      NIO的Buffer提供了一个可以不经过JVM内存直接访问系统物理内存的类：DirectBuffer。DirectBuffer类继承自ByteBuffer，但和普通的ByteBuffer不同，普通的ByteBuffer仍在JVM堆上分配内存，其最大内存受到最大堆内存的限制；而DirectBuffer直接分配在物理内存中，并不占用堆空间，其可申请的最大内存受操作系统限制
+
+      因此直接内存使用于需要大内存空间且频繁访问的场合，不适用于频繁申请释放内存的场合
+
+      </details>
+
+    
+    </details>
+
   - 垃圾回收算法
     - <details><summary>标记-清除</summary>
 
@@ -808,6 +874,7 @@
       JVM生成Heap Dump的时候，虚拟机是暂停一切服务的。如果是线上系统执行Heap Dump时需要注意
       ```
       </details>
+
   - 如何实现方法调用
     - <details><summary>方法调用字节码指令</summary>
 
@@ -828,9 +895,7 @@
       Human woman = new Woman（）;
       ```
 
-      上面代码的Human称为变量的静态类型，后面的Man和Woman为实际类型，静态类型和实际类型在程序中都有可能发生一些变化，
-      区别是，静态类型的变化仅在使用时发生，变量本身的静态类型不会，并且最终的静态类型是编译期可知的，而实际类型在运行期
-      才能确定，编译器在编译期间并不知道一个对象的实际类型是什么，如：
+      上面代码的Human称为变量的静态类型，后面的Man和Woman为实际类型，静态类型和实际类型在程序中都有可能发生一些变化，区别是，静态类型的变化仅在使用时发生，变量本身的静态类型不会，并且最终的静态类型是编译期可知的，而实际类型在运行期才能确定，编译器在编译期间并不知道一个对象的实际类型是什么，如：
       ```
       // 实际类型变化
       Human man = new Man（）;
@@ -839,15 +904,15 @@
       sr.sayHello（（Man）man）;
       sr.sayHello（（Woman）man）;
       ```
-      - <details><summary>静态分派</summary>
 
-        重载时是通过参数的静态类型作为绑定依据，并且静态类型时编译期可知的。编译器根据参数的静态类型决定使用哪个重载版本，并
-        将方法的符号引用写到invokevirtual指令中。
+    - <details><summary>静态分派</summary>
 
-        依赖静态类型来定位方法的执行版本的分派动作称为静态分派
-        </details>
+      重载时是通过参数的静态类型作为绑定依据，并且静态类型时编译期可知的。编译器根据参数的静态类型决定使用哪个重载版本，并将方法的符号引用写到invokevirtual指令中。
+
+      依赖静态类型来定位方法的执行版本的分派动作称为静态分派
+      </details>
       
-      - <details><summary>动态分派</summary>
+    - <details><summary>动态分派</summary>
 
         动态分派和重写有很密切的关联。虚拟机通过对象的实际类型分派重写方法的执行版本，使用的是invokevirtual指令实现多态，
         invokevirtual指令的多态查找过程是：
@@ -862,7 +927,6 @@
         一致的，都指向父类的实现入口，如果子类重写了父类方法，子类方法表中的地址会被替换为子类的实现版本入口。
 
         方法表一般在类加载的连接阶段初始化。
-        </details>
       </details>
 
 - 网络
@@ -1448,6 +1512,209 @@
         WHERE字句的查询条件里有不等于号（WHERE column != ...）或<>操作符，索引无效
         where语句的等号左边进行函数、算术运算或其他表达式运算时，索引无效
         ```
+        </details>
+
+    - <details><summary>执行计划</summary>
+
+        通过`explain [sql语句]`查询sql的执行计划，该命令的输出为：
+        ```
+        mysql> explain select * from (select * from ( select * from t3 where id=3952602) a) b;
+        +----+-------------+------------+--------+-------------------+---------+---------+------+------+-------+
+        | id | select_type | table      | type   | possible_keys     | key     | key_len | ref  | rows | Extra |
+        +----+-------------+------------+--------+-------------------+---------+---------+------+------+-------+
+        |  1 | PRIMARY     | <derived2> | system | NULL              | NULL    | NULL    | NULL |    1 |       |
+        |  2 | DERIVED     | <derived3> | system | NULL              | NULL    | NULL    | NULL |    1 |       |
+        |  3 | DERIVED     | t3         | const  | PRIMARY,idx_t3_id | PRIMARY | 4       |      |    1 |       |
+        +----+-------------+------------+--------+-------------------+---------+---------+------+------+-------+
+        ```
+
+        列含义：
+        1. id：select查询的标识符。 每个select都会自动分配一个唯一的标识符，id数值越大的优先执行，id相同的从上往下顺序执行。
+        2. select_type：select查询的类型
+           1. SIMPLE：不包含任何子查询或union的查询
+           2. PRIMARY：包含子查询时最外层查询就是PRIMARY
+           3. SUBQUERY：在select或 where字句中包含的查询
+           4. DERIVED：from字句中包含的查询
+           5. UNION：出现在union后的查询语句中
+           6. UNION RESULT：从UNION中获取结果集
+        3. table：标识查询的是哪个表，显示这一行的数据是关于哪张表的，有时不是真实的表名字，看到的是derived（n是个数字，为id字段），如一开始的输出例子
+        4. type：数据访问、读取操作类型，性能调优时需要重点关注这一列
+        5. possible_keys：此次查询中可能选用的索引，查询涉及到的字段上若存在索引，则该索引将被列出，但不一定被查询使用
+        6. key：此次查询中确切使用到的索引，如果没有选择索引，键是NULL
+        7. key_len：表示索引中使用的字节数，可通过该列计算查询中使用的索引的长度
+        8. ref: 哪个字段或常数与key一起被使用
+        9. rows: 此查询一共扫描了多少行，这个是一个估计值
+        10. filtered: 表示此查询条件所过滤的数据的百分比
+        11. extra: 额外的信息，后面会详细介绍
+
+        ### select_type字段
+        #### SIMPLE
+        简单select，不使用union或子查询等
+        ```
+        select * from employee where id =1
+        ```
+
+        #### PRIMARY
+        如果是复杂查询，表示是最外层的select
+        ```
+        mysql> explain select * from (select * from employee where id =1) a;
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------+
+        | id | select_type | table      | type   | possible_keys | key     | key_len | ref   | rows | Extra |
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------+
+        |  1 | PRIMARY     | <derived2> | system | NULL          | NULL    | NULL    | NULL  |    1 | NULL  |
+        |  2 | DERIVED     | employee | const  | PRIMARY       | PRIMARY | 8       | const |    1 | NULL  |
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------+
+        ```
+
+        #### UNION & UNION RESULT
+        UNION中的第二个或后面的SELECT语句，UNION RESULT为UNION的结果（union和union all的区别是union会去重，union all不会，所以union all更快）
+        ```
+        mysql> explain select * from employee where id =1 union all select * from employee where id=2;
+        +----+--------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
+        | id | select_type  | table      | type  | possible_keys | key     | key_len | ref   | rows | Extra           |
+        +----+--------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
+        |  1 | PRIMARY      | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | NULL            |
+        |  2 | UNION        | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | NULL            |
+        | NULL | UNION RESULT | <union1,2> | ALL   | NULL          | NULL    | NULL    | NULL  | NULL | Using temporary |
+        +----+--------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
+        ```
+
+        #### SUBQUERY
+        子查询中的第一个SELECT
+        ```
+        mysql> explain select * from employee where id = (select id from employee where id =1);
+        +----+-------------+------------+-------+---------------+---------+---------+-------+------+-------------+
+        | id | select_type | table      | type  | possible_keys | key     | key_len | ref   | rows | Extra       |
+        +----+-------------+------------+-------+---------------+---------+---------+-------+------+-------------+
+        |  1 | PRIMARY     | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | NULL        |
+        |  2 | SUBQUERY    | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | Using index |
+        +----+-------------+------------+-------+---------------+---------+---------+-------+------+-------------+
+        ```
+
+        #### DEPENDENT UNION & DEPENDENT SUBQUERY
+        DEPENDENT UNION，UNION中的第二个或后面的SELECT语句，但结果取决于外面的查询；DEPENDENT SUBQUERY，子查询中的第一个SELECT，但结果取决于外面的查询
+        ```
+        mysql> explain select * from employee where id in (select id from employee where id = 1 union all select id from employee where id = 2);
+        +----+--------------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
+        | id | select_type        | table      | type  | possible_keys | key     | key_len | ref   | rows | Extra           |
+        +----+--------------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
+        |  1 | PRIMARY            | employee | ALL   | NULL          | NULL    | NULL    | NULL  |   26 | Using where     |
+        |  2 | DEPENDENT SUBQUERY | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | Using index     |
+        |  3 | DEPENDENT UNION    | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | Using index     |
+        | NULL | UNION RESULT       | <union2,3> | ALL   | NULL          | NULL    | NULL    | NULL  | NULL | Using temporary |
+        +----+--------------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
+        ```
+
+        #### DERIVED
+        派生表的SELECT，FROM子句的子查询
+        ```
+        mysql> explain select * from (select * from employee where id = 1) a ;
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------+
+        | id | select_type | table      | type   | possible_keys | key     | key_len | ref   | rows | Extra |
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------+
+        |  1 | PRIMARY     | <derived2> | system | NULL          | NULL    | NULL    | NULL  |    1 | NULL  |
+        |  2 | DERIVED     | employee | const  | PRIMARY       | PRIMARY | 8       | const |    1 | NULL  |
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------+
+        ```
+
+        ### type字段
+        type表示数据访问/读取的操作类型，显示了连接使用了哪种类别，有无使用索引，它提供了判断查询是否高效的重要依据依据
+        
+        性能从差到好排序：ALL, index, range, ref, eq_ref, const, system, NULL
+
+        #### NULL
+        不用访问表或者索引就可以直接得到结果
+        ```
+        mysql> explain select sysdate();
+        +----+-------------+-------+------+---------------+------+---------+------+------+----------------+
+        | id | select_type | table | type | possible_keys | key  | key_len | ref  | rows | Extra          |
+        +----+-------------+-------+------+---------------+------+---------+------+------+----------------+
+        |  1 | SIMPLE      | NULL  | NULL | NULL          | NULL | NULL    | NULL | NULL | No tables used |
+        +----+-------------+-------+------+---------------+------+---------+------+------+----------------+
+        ```
+        
+        #### const、system
+        主键或者唯一索引的常量查询，匹配的结果最多只会有一条记录，system是const的一种特殊情况，既表本身只有一行数据的情况
+        ```
+        mysql> explain select * from (select id from mcc_inform where id = 1) a;
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------------+
+        | id | select_type | table      | type   | possible_keys | key     | key_len | ref   | rows | Extra       |
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------------+
+        |  1 | PRIMARY     | <derived2> | system | NULL          | NULL    | NULL    | NULL  |    1 | NULL        |
+        |  2 | DERIVED     | employee | const  | PRIMARY       | PRIMARY | 8       | const |    1 | Using index |
+        +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------------+
+        ```
+
+        #### eq_ref
+        多表的join查询时，对于前表的每一个结果，都用后面一个表的唯一非空索引进行查询
+        ```
+        mysql> explain select * from t3, t4 where t3.id = t4.accountId;
+        +----+-------------+-------+--------+-------------------+-----------+---------+----------------------+------+-------+
+        | id | select_type | table | type   | possible_keys     | key       | key_len | ref                  | rows | Extra |
+        +----+-------------+-------+--------+-------------------+-----------+---------+----------------------+------+-------+
+        |  1 | SIMPLE      | t4    | ALL    | NULL              | NULL      | NULL    | NULL                 | 1000 |       |
+        |  1 | SIMPLE      | t3    | eq_ref | PRIMARY,idx_t3_id | idx_t3_id | 4       | dbatest.t4.accountId |    1 |       |
+        +----+-------------+-------+--------+-------------------+-----------+---------+----------------------+------+-------+
+        ```
+
+        #### ref
+        满足最左前缀原则，或用到了非唯一索引，或多表的join查询的查询条件用到了非唯一索引，可以用于使用=或<=>操作符的带索引的列
+        ```
+        mysql> explain select * from t3, t4 where t3.id = t4.accountId;
+        +----+-------------+-------+------+-------------------+-----------+---------+----------------------+------+-------+
+        | id | select_type | table | type | possible_keys     | key       | key_len | ref                  | rows | Extra |
+        +----+-------------+-------+------+-------------------+-----------+---------+----------------------+------+-------+
+        |  1 | SIMPLE      | t4    | ALL  | NULL              | NULL      | NULL    | NULL                 | 1000 |       |
+        |  1 | SIMPLE      | t3    | ref  | PRIMARY,idx_t3_id | idx_t3_id | 4       | dbatest.t4.accountId |    1 |       |
+        +----+-------------+-------+------+-------------------+-----------+---------+----------------------+------+-------+
+        ```
+
+        #### index_merge
+        该联接类型表示使用了索引合并优化方法，where中可能有多个条件(或者join)涉及到多个字段，它们之间进行AND或者OR，那么此时就有可能会使用到index merge技术，简单来说就是，where语句对多个索引分别进行条件扫描，然后将它们各自的结果进行合并(intersect/union)，intersect表示多个条件之间是AND操作，所以取交集，union表示多个条件之间是OR操作，所以取并集
+        ```
+        mysql> explain select * from t4 where id = 3952602 or accountId = 31754306;
+        +----+-------------+-------+-------------+----------------------------+----------------------------+---------+------+------+------------------------------------------------------+
+        | id | select_type | table | type        | possible_keys              | key                        | key_len | ref  | rows | Extra                                                |
+        +----+-------------+-------+-------------+----------------------------+----------------------------+---------+------+------+------------------------------------------------------+
+        |  1 | SIMPLE      | t4    | index_merge | idx_t4_id,idx_t4_accountid | idx_t4_id,idx_t4_accountid | 4,4     | NULL |    2 | Using union(idx_t4_id,idx_t4_accountid); Using where |
+        +----+-------------+-------+-------------+----------------------------+----------------------------+---------+------+------+------------------------------------------------------+
+        ```
+
+        #### range
+        表示使用索引范围查询，通过索引字段范围获取表中部分数据记录，这个类型通常出现在=, <>, >, >=, <, <=, IS NULL, <=>, BETWEEN, IN()操作中
+        ```
+        mysql> explain select * from t3 where id = 3952602 or id = 3952603;
+        +----+-------------+-------+-------+-------------------+-----------+---------+------+------+-------------+
+        | id | select_type | table | type  | possible_keys     | key       | key_len | ref  | rows | Extra       |
+        +----+-------------+-------+-------+-------------------+-----------+---------+------+------+-------------+
+        |  1 | SIMPLE      | t3    | range | PRIMARY,idx_t3_id | idx_t3_id | 4       | NULL |    2 | Using where |
+        +----+-------------+-------+-------+-------------------+-----------+---------+------+------+-------------+
+        ```
+
+        #### index
+        表示全索引扫描(full index scan)，和ALL类型类似，只不过ALL类型是全表扫描，而index类型则仅仅扫描所有的索引，而不扫描数据
+
+        #### ALL
+        表示全表扫描，这个类型的查询是性能最差的查询
+
+        ### extra字段
+        很多额外的信息会在Extra字段显示，此字段能够给出让我们深入理解执行计划进一步的细节信息
+        #### Using where
+        在查找使用索引的情况下，需要回表去查询所需的数据
+
+        #### Using index
+        表示查询在索引树中就可查找所需数据，不用扫描表数据文件
+
+        #### Using filesort
+        当SQL中包含ORDER BY操作，而且无法利用索引完成排序操作的时候，查询优化器不得不选择相应的排序算法来实现
+        
+        filesort主要用于查询数据结果集的排序操作，首先MySQL会使用sort_buffer_size大小的内存进行排序，如果结果集超过了sort_buffer_size大小，会把这一个排序后的chunk转移到file上，最后使用多路归并排序完成所有数据的排序操作。
+        
+        filesort只能应用在单个表上，如果有多个表的数据需要排序，那么MySQL会先使用using temporary保存临时数据，然后再在临时表上使用filesort进行排序，最后输出结果
+
+        #### Using temporary
+        查询有使用临时表，一般出现于排序，分组和多表join的情况，查询效率不高，建议优化
+
         </details>
 
 - 缓存
