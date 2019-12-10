@@ -362,7 +362,7 @@
           #### 介绍
           ```
           AbstractQueuedSynchronizer实现了JUC包下工具类的基础框架，是Java并发编程最重要的类之一，实现原理参
-          考了CLH Lock。实现原理是：
+          考了CLH Lock。AbstractQueuedSynchronizer的实现原理是：
           维护一个双向队列，也就是Sync队列，初始情况下队列为空，每个线程在尝试获取锁之前都会创建一个代表自己的结点
           并入队，第一个结点入队时队列为空，此时会额外创建一个头结点，使得第一个入队的线程结点为头结点的后继，对于
           之后入队的结点，添加到队列尾。所有结点在无限循环中不断尝试获取锁，成功获取锁的条件是线程结点为头结点的后
@@ -378,31 +378,44 @@
           ReentrantLock lock = new ReentrantLock();
           Condition condition = lock.newCondition();
 
-          // thread1
           new Thread(() -> {
               try {
                   lock.lock();
                   condition.await();
+                  System.out.println(Thread.currentThread().getId());
               } catch (InterruptedException e) {
                   e.printStackTrace();
               } finally {
                   lock.unlock();
               }
-          }
-          // main thread
-          Thread.sleep(1000L)
+          }).start();
+
+          new Thread(() -> {
+              try {
+                  lock.lock();
+                  condition.await();
+                  System.out.println(Thread.currentThread().getId());
+              } catch (InterruptedException e) {
+                  e.printStackTrace();
+              } finally {
+                  lock.unlock();
+              }
+          }).start();
+
+          Thread.sleep(1000L);
           try {
               lock.lock();
-              condition.signal();
+              System.out.println("release lock");
+              condition.signalAll();
           } finally {
               lock.unlock();
           }
 
-          上面从lock中创建了一个condition对象，thread1执行到await方法并被阻塞等待其他线程唤醒，main thread1秒
-          后执行signal唤醒一个在condition上等待的线程，之后thread1就能继续执行了。这里的实现原理是Condition队
-          列上保存了所有在该condition上等待的线程结点（这些结点只在Condition队列上，不在Sync队列上），在调用了
-          condition对象的signal方法后，调用线程会将Condition队列上的头结点添加到Sync队列参与锁竞争，如果调用的
-          是signalAll方法，则所有Condition队列上的结点都会被添加到Sync队列参与锁竞争。
+          上面从lock中创建了一个condition对象，thread1和thread2执行到await方法被阻塞等待其他线程唤醒，main thread
+          在1秒后执行signalAll唤醒所有在condition上等待的线程，之后thread1和thread2就能继续执行了。这里的实现原理是
+          Condition队列上保存了所有在该condition上等待的线程结点（这些结点只在Condition队列上，不在Sync队列上），在调用了
+          condition对象的signalAll方法后，调用线程会将Condition队列上的所有结点都添加到Sync队列参与锁竞争，如果调用的
+          是signal方法，则只添加Condition队列上的头结点到Sync队列参与锁竞争。
           上面是AQS的大致逻辑，涉及到的细节见下面的源码分析
           ```
 
