@@ -1715,7 +1715,85 @@
         #### Using temporary
         查询有使用临时表，一般出现于排序，分组和多表join的情况，查询效率不高，建议优化
 
-        </details>
+      </details>
+
+    - <details><summary>慢SQL分析</summary>
+
+      设置`slow_query_log = 1`开启慢查询，设置`long_query_time = n`（默认10s）选项定义慢SQL的阈值
+
+      或者设置`profiling = 1`开启`show profile`功能（需要注意MYSQL版本是否支持`show profile`，MYSQL5.7支持该命令但是不推荐使用，推荐的是使用`performance_schema`，不过和`show profile`做的是类似的事），通过`SHOW VARIABLES LIKE 'profiling'`可以查看`show profile`是否开启，开启后执行SQL则SQL的相关信息会被记录在`INFORMATION_SCHEMA.PROFILING`这个系统表，可以直接使用`show profiles`查看已经记录的SQL分析，如：
+      ```
+      # SHOW PROFILE命令格式
+      SHOW PROFILE [type [, type] ... ]
+          [FOR QUERY n]
+          [LIMIT row_count [OFFSET offset]]
+
+      type: {
+          ALL
+        | BLOCK IO
+        | CONTEXT SWITCHES
+        | CPU
+        | IPC
+        | MEMORY
+        | PAGE FAULTS
+        | SOURCE
+        | SWAPS
+      }
+
+      mysql> SHOW PROFILES;
+      +----------+----------+--------------------------+
+      | Query_ID | Duration | Query                    |
+      +----------+----------+--------------------------+
+      |        0 | 0.000088 | SET PROFILING = 1        |
+      |        1 | 0.000136 | DROP TABLE IF EXISTS t1  |
+      |        2 | 0.011947 | CREATE TABLE t1 (id INT) |
+      +----------+----------+--------------------------+
+      ```
+
+      再根据`Query_ID`查看具体SQL的分析：
+      ```
+      mysql> SHOW PROFILE FOR QUERY 1;
+      +--------------------+----------+
+      | Status             | Duration |
+      +--------------------+----------+
+      | query end          | 0.000107 |
+      | freeing items      | 0.000008 |
+      | logging slow query | 0.000015 |
+      | cleaning up        | 0.000006 |
+      +--------------------+----------+
+
+      mysql> SHOW PROFILE CPU FOR QUERY 2;
+      +----------------------+----------+----------+------------+
+      | Status               | Duration | CPU_user | CPU_system |
+      +----------------------+----------+----------+------------+
+      | checking permissions | 0.000040 | 0.000038 |   0.000002 |
+      | creating table       | 0.000056 | 0.000028 |   0.000028 |
+      | After create         | 0.011363 | 0.000217 |   0.001571 |
+      | query end            | 0.000375 | 0.000013 |   0.000028 |
+      | freeing items        | 0.000089 | 0.000010 |   0.000014 |
+      | logging slow query   | 0.000019 | 0.000009 |   0.000010 |
+      | cleaning up          | 0.000005 | 0.000003 |   0.000002 |
+      +----------------------+----------+----------+------------+
+      ```
+
+      `show profile`命令的type含义：
+      1. ALL displays all information
+      2. BLOCK IO displays counts for block input and output operations
+      3. CONTEXT SWITCHES displays counts for voluntary and involuntary context switches
+      4. CPU displays user and system CPU usage times
+      5. IPC displays counts for messages sent and received
+      6. MEMORY is not currently implemented
+      7. PAGE FAULTS displays counts for major and minor page faults
+      8. SOURCE displays the names of functions from the source code, together with the name and line number of the file in which the function occurs
+      9. SWAPS displays swap counts
+
+      或者直接打开`INFORMATION_SCHEMA.PROFILING`表查看SQL信息
+
+      `show profile`命令不建议使用，推荐的是[Performance Schema](https://dev.mysql.com/doc/refman/8.0/en/performance-schema-query-profiling.html)，具体的看官方文档吧
+
+      找到慢SQL后，如果`show profile`的信息不能解决问题，则使用`explain [SQL]`查看慢SQL的执行计划
+
+      </details>
 
 - 缓存
   - 基础知识
@@ -2991,6 +3069,15 @@
 
   - 高并发场景
     - <details><summary>秒杀系统设计</summary>
+
+      #### 系统隔离
+      为了不影响现有的业务系统的正常运行，把秒杀系统和现有的系统做隔离。即使秒杀活动出现问题也不会影响现有的系统。隔离的设计思路可以从三个维度来思考：
+      1. 业务隔离：可以把秒杀当成一个单独的项目来看，在活动开始之前，最好设计一个“热场”，“热场”的形式多种多样，例如：分享活动领优惠券，领秒杀名额等等。“热场”的形式不重要，重要的是通过它获取一些准备信息，例如：有可能参与的用户数，他们的地域分布，他们感兴趣的商品。为后面的技术架构提供数据支持
+      2. 技术隔离：
+         1. 客户端，前端秒杀页面使用专门的页面，这些页面包括静态的HTML和动态的JS，他们都需要在CDN上缓存，秒杀开始时，前端访问后台获取具体的秒杀url，后台校验通过之后才返回秒杀url，秒杀的url需要实现动态化，如通过md5加密一串随机字符作为秒杀的url，使得秒杀url无法被提前计算出来
+         2. 接入层，加入过滤器专门处理秒杀请求，即使扩展再多的应用，使用再多的应用服务器，部署再多的负载均衡器，都会遇到支撑不住海量请求的时候，所以，在这一层要考虑的是如何做好限流，当超过系统承受范围的时候，需要果断阻止请求的涌入
+         3. 应用层，瞬时的海量请求好比请求的“高峰”，架构系统的目的就是“削峰”。需要使用服务集群和水平扩展，让“高峰”请求分流到不同的服务器进行处理。同时，还会利用缓存和队列技术减轻应用处理的压力，通过异步请求的方式做到最终一致性。由于是多线程操作，而且商品的额度有限，为了解决超卖的问题，需要考虑进程锁的问题
+      3. 数据库隔离：秒杀活动持续时间短，瞬时数据量大。为了不影响现有数据库的正常业务，可以建立新的库或者表来处理，在秒杀结束以后，需要把这部分数据同步到主业务系统中
 
       #### 前端动静分离
       ```
