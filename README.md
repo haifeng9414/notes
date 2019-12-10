@@ -280,7 +280,7 @@
           containsValue的思路和size是一样的
           ```
 
-          [ConcurrentHashMap-JDK7](ConcurrentHashMap-JDK7.md)
+          [ConcurrentHashMap-JDK7](Java/Java源码阅读/并发类/ConcurrentHashMap-JDK7.md)
         </details> 
 
       - <details><summary>ConcurrentHashMap-JDK8</summary>
@@ -326,7 +326,7 @@
 
           ```
 
-          [ConcurrentHashMap-JDK8](ConcurrentHashMap-JDK8.md)
+          [ConcurrentHashMap-JDK8](Java/Java源码阅读/并发类/ConcurrentHashMap-JDK8.md)
         </details> 
 
       - <details><summary>ConcurrentSkipListMap</summary>
@@ -341,7 +341,7 @@
           主要逻辑在doGet、doPut、doRemove
           ```
 
-          [ConcurrentSkipListMap](ConcurrentSkipListMap.md)
+          [ConcurrentSkipListMap](Java/Java源码阅读/并发类/ConcurrentSkipListMap.md)
         </details> 
       
       - <details><summary>CopyOnWriteArrayList</summary>
@@ -354,7 +354,7 @@
           的数组，这样在遍历期间即使发生了修改操作，遍历期间的数组还是没有变化的，所以任何遍历操作都不需要加锁
           ```
 
-          [CopyOnWriteArrayList](CopyOnWriteArrayList.md)
+          [CopyOnWriteArrayList](Java/Java源码阅读/并发类/CopyOnWriteArrayList.md)
         </details> 
 
       - <details><summary>AbstractQueuedSynchronizer</summary>
@@ -406,7 +406,7 @@
           上面是AQS的大致逻辑，涉及到的细节见下面的源码分析
           ```
 
-          [AbstractQueuedSynchronizer](AbstractQueuedSynchronizer.md)
+          [AbstractQueuedSynchronizer](Java/Java源码阅读/并发类/AbstractQueuedSynchronizer.md)
         </details>
 
       - <details><summary>ReentrantLock</summary>
@@ -419,7 +419,7 @@
           公平锁两种
           ```
 
-          [ReentrantLock](ReentrantLock.md)
+          [ReentrantLock](Java/Java源码阅读/并发类/ReentrantLock.md)
         </details>
 
       - <details><summary>CountDownLatch</summary>
@@ -436,7 +436,7 @@
           setHeadAndPropagate方法唤醒其他线程
           ```
 
-          [CountDownLatch](CountDownLatch.md)
+          [CountDownLatch](Java/Java源码阅读/并发类/CountDownLatch.md)
         </details>
 
       - <details><summary>CyclicBarrier</summary>
@@ -453,7 +453,7 @@
           doAwait方法，下面是源码分析
           ```
 
-          [CyclicBarrier](CyclicBarrier.md)
+          [CyclicBarrier](Java/Java源码阅读/并发类/CyclicBarrier.md)
         </details>
 
       - <details><summary>Semaphore</summary>
@@ -511,7 +511,7 @@
           实现中就表示线程需要的许可数
           ```
 
-          [Semaphore](Semaphore.md)
+          [Semaphore](Java/Java源码阅读/并发类/Semaphore.md)
         </details>
     
 - 设计模式
