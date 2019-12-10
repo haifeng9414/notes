@@ -709,7 +709,7 @@
 
         新生代使用复制算法，老年代使用标记-整理算法
 
-        ![Serial收集器](resources/ParNew收集器.png)
+        ![ParNew收集器](resources/ParNew收集器.png)
         </details>
 
       - <details><summary>Parallel Scavenge收集器</summary>
@@ -804,8 +804,7 @@
         |-XX:G1MaxNewSizePercent|新生代最大值，默认值60%|
         
         #### mixed gc
-        当越来越多的对象晋升到老年代old region时，为了避免堆内存被耗尽，虚拟机会触发一个混合的垃圾收集器，即mixed gc，该算法并不是一个old gc，除了回收整个young region，还会回收一部分的old region，这里需要注意：是一部分老年代，而不是全部老年代，可以选择哪些old region进行收集（G1会跟踪各个Region回收所需的空间大小和时间维护一个优先列表，在GC时先按列表优先顺序回收），从而可以对垃圾回收的耗时时间进行控制
-        那么mixed gc什么时候被触发？
+        当越来越多的对象晋升到老年代old region时，为了避免堆内存被耗尽，虚拟机会触发一个混合的垃圾收集器，即mixed gc，该算法并不是一个old gc，除了回收整个young region，还会回收一部分的old region，这里需要注意：是一部分老年代，而不是全部老年代，可以选择哪些old region进行收集（G1会跟踪各个Region回收所需的空间大小和时间维护一个优先列表，在GC时先按列表优先顺序回收），从而可以对垃圾回收的耗时时间进行控制。那么mixed gc什么时候被触发？
         先回顾一下cms的触发机制，如果添加了以下参数：
 
         -XX:CMSInitiatingOccupancyFraction=80 -XX:+UseCMSInitiatingOccupancyOnly
@@ -822,14 +821,14 @@
         如果对象内存分配速度过快，mixed gc来不及回收，导致老年代被填满，就会触发一次full gc，G1的full gc算法就是单线程执行的serial old gc，会导致异常长时间的暂停时间，需要进行不断的调优，尽可能的避免full gc
 
         </details>
-        
+
       </details>
 
   - 调优与故障排查
     - <details><summary>JVM的故障排查相关JVM选项</summary>
 
-      ```
       可以使用以下参数打印GC日志：
+      ```
       -XX:+PrintGCTimeStamps（打印GC停顿时间）
       -XX:+PrintGCDateStamps（输出GC的时间戳（以日期的形式，如2013-05-04T21:53:59.234+0800）
       -XX:+PrintGCDetails（打印GC详细信息）
@@ -897,29 +896,29 @@
   
     - <details><summary>CPU飙高的基本操作</summary>
 
-      ```
-      通过top命令找到CPU消耗最高的Java进程，并记住进程ID
-      再次通过top -Hp [进程 ID]找到CPU消耗最高的线程ID，并记住线程ID
-      通过JDK提供的jstack工具打印出线程堆栈信息到指定文件中，具体命令：jstack -l [进程 ID] > jstack.log
-      由于刚刚的线程ID是十进制的，而堆栈信息中的线程ID是16进制的，因此我们需要将10进制的转换成16进制的，并用这个线程ID在堆栈中查找。使用printf "%x\n" [十进制数字]，可以将10进制转换成16进制
-      通过刚刚转换的16进制数字从堆栈信息里找到对应的线程堆栈，就可以从该堆栈中看出端倪。
-      ```
+      1. 通过top命令找到CPU消耗最高的Java进程，并记住进程ID
+      2. 再次通过top -Hp [进程 ID]找到CPU消耗最高的线程ID，并记住线程ID
+      3. 通过JDK提供的jstack工具打印出线程堆栈信息到指定文件中，具体命令：jstack -l [进程 ID] > jstack.log
+      4. 由于刚刚的线程ID是十进制的，而堆栈信息中的线程ID是16进制的，因此我们需要将10进制的转换成16进制的，并用这个线程ID在堆栈中查找。使用printf "%x\n" [十进制数字]，可以将10进制转换成16进制
+      5. 通过刚刚转换的16进制数字从堆栈信息里找到对应的线程堆栈，就可以从该堆栈中看出端倪
+       
       </details>
 
     - <details><summary>内存问题排查</summary>
 
-      ```
       内存溢出的情况可以通过加上启动选项-XX:+HeapDumpOnOutOfMemoryError，在程序内存溢出时输出dump文件，有了dump文件，就可以通过dump分析工具进行分析了，比如常用的MAT，JProfile，JVisualVM等工具都可以分析，这些工具都能够看出到底是哪里溢出，哪里创建了大量的对象等等信息
 
       其他选项还有：
+      ```
       -XX:+HeapDumpBeforeFullGC 当JVM执行FullGC前执行dump
       -XX:+HeapDumpAfterFullGC 当JVM执行FullGC后执行dump
       -XX:HeapDumpPath=path/to/heap.hprof 指定dump文件存储路径
+      ```
 
-      也可以用jmap -dump:live,format=b,file=path/to/heap.hprof [进程ID]打印正在运行的Java进程的Dump文件
+      也可以用`jmap -dump:live,format=b,file=path/to/heap.hprof [进程ID]`打印正在运行的Java进程的Dump文件
 
       JVM生成Heap Dump的时候，虚拟机是暂停一切服务的。如果是线上系统执行Heap Dump时需要注意
-      ```
+
       </details>
 
   - 如何实现方法调用
@@ -978,7 +977,7 @@
 
 - 网络
   - HTTPS和HTTP
-    - <details><summary>HTTP1.0/1.1/2.0</summary>
+    - <details><summary>状态代码</summary>
       
       ```
       状态代码 状态信息 含义
@@ -1028,12 +1027,9 @@
     - <details><summary>HTTP1.0/1.1/2.0</summary>
 
       #### HTTP1.0
-      ```
       HTTP协议老的标准是HTTP/1.0，HTTP 1.0规定浏览器与服务器只保持短暂的连接，浏览器的每次请求都需要与服务器建立一个TCP连接，服务器完成请求处理后立即断开TCP连接，服务器不跟踪每个客户也不记录过去的请求，连接无法复用会导致每次请求都经历三次握手和慢启动。三次握手在高延迟的场景下影响较明显，慢启动则对文件类大请求影响较大
-      ```
 
       #### HTTP1.1
-      ```
       为了克服HTTP 1.0的这个缺陷，HTTP 1.1支持持久连接，并且在一个TCP连接上可以传送多个HTTP请求和响应，减少了建立和关闭连接的消耗和延迟。一个包含有许多图像的网页文件的多个请求和应答可以在一个连接中传输。HTTP 1.1还允许客户端不用等待上一次请求结果返回，就可以发出下一次请求，但服务器端必须按照接收到客户端请求的先后顺序依次回送响应结果，以保证客户端能够区分出每次请求的响应内容
 
       在http1.1，request和reponse头中都有可能出现一个connection的头，此header的含义是当client和server通信时对于长链接如何进行处理。
@@ -1056,15 +1052,13 @@
       为了使caching机制更加灵活，HTTP/1.1增加了Cache-Control头域（请求消息和响应消息都可使用），它支持一个可扩展的指令子集：例如max-age指令支持相对时间戳；private和no-store指令禁止对象被缓存；no-transform阻止Proxy进行任何改变响应的行为
 
       Cache使用关键字索引在磁盘中缓存的对象，在HTTP/1.0中使用资源的URL作为关键字。但可能存在不同的资源基于同一个URL的情况，要区别它们还需要客户端提供更多的信息，如Accept-Language和Accept-Charset头域。为了支持这种内容协商机制(content negotiation mechanism)，HTTP/1.1在响应消息中引入了Vary头域，该头域列出了请求消息中需要包含哪些头域用于内容协商
-      ```
 
       #### HTTP2.0
-      ```
       HTTP1.x有以下几个主要缺点：
-      HTTP/1.0一次只允许在一个TCP连接上发起一个请求，HTTP/1.1使用的流水线技术也只能部分处理请求并发，仍然会存在队列头阻塞问题，因此客户端在需要发起多次请求时，通常会采用建立多连接来减少延迟
-      单向请求，只能由客户端发起
-      请求报文与响应报文首部信息冗余量大
-      数据未压缩，导致数据的传输量大
+      1. HTTP/1.0一次只允许在一个TCP连接上发起一个请求，HTTP/1.1使用的流水线技术也只能部分处理请求并发，仍然会存在队列头阻塞问题，因此客户端在需要发起多次请求时，通常会采用建立多连接来减少延迟
+      2. 单向请求，只能由客户端发起
+      3. 请求报文与响应报文首部信息冗余量大
+      4. 数据未压缩，导致数据的传输量大
 
       HTTP2.0特点
       1. 二进制传输：HTTP2.0中所有加强性能的核心是二进制传输，在HTTP1.x中，我们是通过文本的方式传输数据。基于文本的方式传输数据存在很多缺陷，文本的表现形式有多样性，因此要做到健壮性考虑的场景必然有很多，但是二进制则不同，只有0和1的组合，因此选择了二进制传输，实现方便且健壮。在HTTP2.0中引入了新的编码机制，所有传输的数据都会被分割，并采用二进制格式编码
@@ -1073,17 +1067,14 @@
       3. Header压缩：在HTTP1.0中，我们使用文本的形式传输header，在header中携带cookie的话，每次都需要重复传输几百到几千的字节，这着实是一笔不小的开销。在HTTP2.0中，使用了HPACK（HTTP2头部压缩算法）压缩格式对传输的header进行编码，减少了header的大小。并在两端维护了索引表，用于记录出现过的header，后面在传输过程中就可以传输已经记录过的header的键名，对端收到数据后就可以通过键名找到对应的值
       4. 服务器Push：在HTTP2.0中，服务端可以在客户端某个请求后，主动推送其他资源。可以想象一下，某些资源客户端是一定会请求的，这时就可以采取服务端push的技术，提前给客户端推送必要的资源，就可以相对减少一点延迟时间。在浏览器兼容的情况下也可以使用prefetch
 
-      ```
-
     - <details><summary>QUIC</summary>
 
-      ```
       Quic 相比现在广泛应用的 http2+tcp+tls协议有如下优势：
-      减少了TCP三次握手及TLS握手时间
-      改进的拥塞控制
-      避免队头阻塞的多路复用
-      连接迁移
-      前向冗余纠错
+      1. 减少了TCP三次握手及TLS握手时间
+      2. 改进的拥塞控制
+      3. 避免队头阻塞的多路复用
+      4. 连接迁移
+      5. 前向冗余纠错
 
       为什么需要QUIC：
       1. 中间设备的僵化：TCP协议使用得太久，也非常可靠。所以很多中间设备，包括防火墙、NAT 网关，整流器等出现了一些约定俗成的动作。比如有些防火墙只允许通过80和443，不放通其他端口。NAT网关在转换网络地址时重写传输层的头部，有可能导致双方无法使用新的传输格式。整流器和中间代理有时候出于安全的需要，会删除一些它们不认识的选项字段。这些干扰，也导致很多在TCP协议上的优化变得小心谨慎，步履维艰
@@ -1100,8 +1091,6 @@
          2. 单调递增的Packet Number：TCP为了保证可靠性，使用了基于字节序号的Sequence Number及Ack来确认消息的有序到达。QUIC同样是一个可靠的协议，它使用Packet Number代替了TCP的sequence number，并且每个Packet Number都严格递增，也就是说就算Packet N丢失了，重传的 Packet N的Packet Number已经不是 N，而是一个比N大的值。而TCP呢，重传segment的sequence number和原始的segment的Sequence Number保持不变，也正是由于这个特性，引入了Tcp重传的歧义问题，超时事件RTO发生后，客户端发起重传，然后接收到了Ack数据。由于序列号一样，这个Ack数据到底是原始请求的响应还是重传请求的响应呢？不好判断。由于 Quic 重传的 Packet 和原始 Packet 的 Pakcet Number 是严格递增的，所以很容易就解决了这个问题。但是单纯依靠严格递增的 Packet Number 肯定是无法保证数据的顺序性和可靠性。QUIC 又引入了一个 Stream Offset 的概念。即一个 Stream 可以经过多个 Packet 传输，Packet Number 严格递增，没有依赖。但是 Packet 里的 Payload 如果是 Stream 的话，就需要依靠 Stream 的 Offset 来保证应用数据的顺序。如错误! 未找到引用源。所示，发送端先后发送了 Pakcet N 和 Pakcet N+1，Stream 的 Offset 分别是 x 和 x+y。假设 Packet N 丢失了，发起重传，重传的 Packet Number 是 N+2，但是它的 Stream 的 Offset 依然是 x，这样就算 Packet N + 2 是后到的，依然可以将 Stream x 和 Stream x+y 按照顺序组织起来，交给应用程序处理
       3. 没有队头阻塞的多路复用：QUIC的多路复用和HTTP2类似。在一条QUIC连接上可以并发发送多个HTTP请求 (stream)。但是QUIC的多路复用相比HTTP2有一个很大的优势，QUIC一个连接上的多个stream之间没有依赖。这样假如stream2丢了一个udp packet，也只会影响stream2的处理。不会影响stream2之前及之后的stream的处理，这也就在很大程度上缓解甚至消除了队头阻塞的影响。多路复用是HTTP2最强大的特性，能够将多条请求在一条TCP连接上同时发出去。但也恶化了TCP的一个问题，队头阻塞。HTTP2在一个 TCP 连接上同时发送 4 个 Stream。其中 Stream1 已经正确到达，并被应用层读取。但是 Stream2 的第三个 tcp segment 丢失了，TCP 为了保证数据的可靠性，需要发送端重传第 3 个 segment 才能通知应用层读取接下去的数据，虽然这个时候 Stream3 和 Stream4 的全部数据已经到达了接收端，但都被阻塞住了
       4. 连接迁移：任何一条QUIC连接不再以IP及端口四元组标识，而是以一个64位的随机数作为ID来标识，这样就算IP或者端口发生变化时，只要ID不变，这条连接依然维持着，上层业务逻辑感知不到变化，不会中断，也就不需要重连
-      ...
-      ```
 
       </details> 
 
@@ -1136,9 +1125,8 @@
       PreMaster secret是在客户端使用RSA或者Diffie-Hellman等加密算法生成的。它将用来跟服务端和客户端在Hello阶段产生的随机数结合在一起生成Master secret。在客户端使用服务端的公钥对PreMaster secret进行加密之后传送给服务端，服务端将使用私钥进行解密得到PreMaster secret。也就是说服务端和客户端都有一份相同的PreMaster secret和随机数。
 
       #### 为什么需要三个随机数？
-      ```
       不管是客户端还是服务器，都需要随机数，这样生成的密钥才不会每次都一样。由于SSL协议中证书是静态的，因此十分有必要引入一种随机因素来保证协商出来的密钥的随机性。对于RSA密钥交换算法来说，pre-master-key本身就是一个随机数，再加上hello消息中的随机，三个随机数通过一个密钥导出器（Master Secret）最终导出一个对称密钥。premaster的存在在于SSL协议不信任每个主机都能产生完全随机的随机数（被认为是伪随机），如果随机数不随机，那么premaster secret就有可能被猜出来，那么仅适用pre master secret作为密钥就不合适了，因此必须引入新的随机因素，那么客户端和服务器加上premaster secret三个随机数一同生成的密钥就不容易被猜出了，一个伪随机可能完全不随机，可是是三个伪随机就十分接近随机了，每增加一个自由度，随机性增加的可不是一。
-      ```
+      
       </details>
 
   - TCP协议
