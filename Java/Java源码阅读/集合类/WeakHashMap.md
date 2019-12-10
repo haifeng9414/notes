@@ -260,20 +260,25 @@ public class WeakHashMap<K,V>
     // 当对象被回收时，其包装类，即由该对象创建出来的WeakReference会被添加到引用队列，entry的构造函数中声明了super(key, queue)，所以在key被回收时，
     // entry会进入queue）
     private void expungeStaleEntries() {
+        // 遍历引用队列中的元素
         for (Object x; (x = queue.poll()) != null; ) {
             synchronized (queue) {
                 @SuppressWarnings("unchecked")
                     Entry<K,V> e = (Entry<K,V>) x;
+                // 找到元素在数组中的位置
                 int i = indexFor(e.hash, table.length);
 
                 Entry<K,V> prev = table[i];
                 Entry<K,V> p = prev;
+                // WeakHashMap用链表解决hash冲突，这里将元素从链表中删除
                 while (p != null) {
                     Entry<K,V> next = p.next;
+                    // 如果找到了需要删除的元素
                     if (p == e) {
+                        // 循环开始前p和prev都指向数组i位置，prev == e说明需要删除的元素就在链表头，直接更新i位置为next即可
                         if (prev == e)
                             table[i] = next;
-                        else
+                        else // 否则更新prev的next，相当于元素从链表中被删除了
                             prev.next = next;
                         // Must not null out e.next;
                         // stale entries may be in use by a HashIterator
@@ -281,6 +286,7 @@ public class WeakHashMap<K,V>
                         size--;
                         break;
                     }
+                    // 未找到需要删除的元素则往链表后找
                     prev = p;
                     p = next;
                 }
@@ -397,7 +403,7 @@ public class WeakHashMap<K,V>
         Entry<K,V>[] tab = getTable();
         int i = indexFor(h, tab.length);
 
-        // 先判断key是否已存在
+        // 先判断key是否已存在，已存在直接替换原值即可返回
         for (Entry<K,V> e = tab[i]; e != null; e = e.next) {
             if (h == e.hash && eq(k, e.get())) {
                 V oldValue = e.value;
@@ -409,6 +415,7 @@ public class WeakHashMap<K,V>
 
         modCount++;
         Entry<K,V> e = tab[i];
+        // 如果key不存在则直接放到数组i位置的链表头
         tab[i] = new Entry<>(k, value, queue, h, e);
         // 超过阈值扩容两倍
         if (++size >= threshold)
