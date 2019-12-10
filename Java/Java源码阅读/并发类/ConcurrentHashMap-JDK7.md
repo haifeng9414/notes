@@ -5,6 +5,7 @@ get、clear方法没有加锁，直接遍历所有的Segment，所以是弱一�
 isEmpty方法中没有加锁，采用的是循环一次判断是否存在非空Segment，如果都为空则记住modCount，再循环一次，如果再次为空并且两次modCount相等，则返回true
 size方法也是循环多次（默认两次）计算modCount是否相等，不想等并超出循环次数则获取Segment锁并再次计算size
 containsValue的思路和size是一样的
+构造函数结束后Segment数组只初始化了第一个成员，后续的成员在用到时才初始化，初始化时用casSegment数组元素实现不加锁初始化
 
 ```java
 package dhf;
@@ -56,7 +57,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
      * The default concurrency level for this table, used when not
      * otherwise specified in a constructor.
      */
-    // 默认并发级别
+    // 默认并发级别，也就是默认Segment数组大小
     static final int DEFAULT_CONCURRENCY_LEVEL = 16;
     /**
      * The maximum capacity, used if a higher value is implicitly
@@ -125,12 +126,12 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
      * Mask value for indexing into segments. The upper bits of a
      * key's hash code are used to choose the segment.
      */
-    //默认参数的情况下为15也就是1111B
+    // 默认参数的情况下为15也就是1111B
     final int segmentMask;
     /**
      * Shift value for indexing within segments.
      */
-    //默认参数的情况下为28
+    // 默认参数的情况下为28
     final int segmentShift;
     /**
      * The segments, each of which is a specialized hash table.
@@ -171,20 +172,21 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         // Find power-of-two sizes best matching arguments
         int sshift = 0;
         int ssize = 1;
-        //concurrencyLevel默认为16，所以ssize默认为16，sshift默认为4
+        // concurrencyLevel默认为16，所以ssize默认为16，sshift默认为4
         while (ssize < concurrencyLevel) {
             ++sshift;
             ssize <<= 1;
         }
-        //默认为28
+        // 默认为28
         this.segmentShift = 32 - sshift;
-        //默认为15
+        // 默认为15
         this.segmentMask = ssize - 1;
         if (initialCapacity > MAXIMUM_CAPACITY)
             initialCapacity = MAXIMUM_CAPACITY;
-        //容量除以segment的个数等于每个segment中链表的个数
+        // 容量除以segment的个数等于每个segment中链表的个数
         int c = initialCapacity / ssize;
-        //由于除法结果转int是向下取整，所以判断数量是否够，不够则每个segment多一个链表，保证总的链表个数大于等于initialCapacity
+        // 由于除法结果转int是向下取整，所以判断数量是否够，不够则每个segment多一个链表，保证总的链表个数大于等于initialCapacity
+        // 默认情况下initialCapacity = 16，ssize = 16，所以这里c * ssize < initialCapacity不满足，默认情况下c就是2
         if (c * ssize < initialCapacity)
             ++c;
         int cap = MIN_SEGMENT_TABLE_CAPACITY;
@@ -192,14 +194,14 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         while (cap < c)
             cap <<= 1;
         // create segments and segments[0]
-        //只创建一个segment，后面的用延迟初始化方式
+        // 只创建一个segment，后面的用延迟初始化方式
         Segment<K, V> s0 =
                 new Segment<K, V>(loadFactor, (int) (cap * loadFactor),
                         (HashEntry<K, V>[]) new HashEntry[cap]);
-        //创建segment数组
+        // 创建segment数组
         Segment<K, V>[] ss = (Segment<K, V>[]) new Segment[ssize];
-        // 设置segment数组的第一个元素为s0，这里用putOrderedObject设置数组第一个元素主要是为了效率吧，putOrderedObject不保证对其他线程立即可见，
-        // 但是this.segments是final的，所以构造函数结束后this.segments会被正确赋值
+        // 设置segment数组的第一个元素为s0，putOrderedObject不保证对其他线程立即可见，但是this.segments是final的，
+        // 根据happen before，构造函数结束后this.segments和其成员会被正确赋值
         UNSAFE.putOrderedObject(ss, SBASE, s0); // ordered write of segments[0]
         this.segments = ss;
     }
@@ -361,7 +363,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
      */
     @SuppressWarnings("unchecked")
     // 获取第k项Segment，由于构造函数只初始化了Segment数组的第一个Segment，其他的都是延迟创建的，所以这里用于确保想要的Segment被创建了
-    // 该方法会在多线程环境下运行，但是又没有获取锁，所以用了一些特殊的方法确保了线程安全
+    // 该方法会在多线程环境下运行，但是又没有获取锁，所以用cas确保了线程安全
     private Segment<K, V> ensureSegment(int k) {
         final Segment<K, V>[] ss = this.segments;
         long u = (k << SSHIFT) + SBASE; // raw offset
