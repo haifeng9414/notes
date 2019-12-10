@@ -29,6 +29,14 @@
           链表头，以便直接就能访问到。注意双向链表的顺序和红黑树的结点大小没有关系，唯一的关系是双向链表头等于红黑树的
           root，可以看treeifyBin方法的实现。
           ```
+
+          HashMap-JDK7的rehash在并发下可能会死循环，HashMap-JDK8的rehash过程和HashMap-JDK7的不一样，
+          在一个数组元素上直接找到两条链表，这样不会出现HashMap-JDK7的问题，但是HashMap-JDK8仍然是线程不安全的，
+          如多个线程put时找到了同一个数组元素，都想要将自己的值置于原数组元素的next指针位置，则可能某个线程执行next
+          赋值时就将其他线程刚赋值的元素给覆盖了
+
+          另外，HashMap-JDK8没有任何并发限制，所以在resize时由于数组的状态还不确定，此时get和put的结果都是不确定的，
+          可能get操作时获取到的是null，实际上是有值的，只不过正在resize，值还未归位
   
           源码分析：[HashMap-JDK8](Java/Java源码阅读/集合类/HashMap-JDK8.md)
         </details>
@@ -37,7 +45,9 @@
   
           #### 介绍
           ```
-          HashSet的作用的保存一组没有重复的数据，HashSet内部维护一个HashMap，在add元素的时候只需要调用这个map的put方法并将新增元素作为key即可，这样保证了数据不会重复，而put的value是一个HashSet里定义的实例属性，所有的key共用这一个value，以减少内存占用
+          HashSet的作用的保存一组没有重复的数据，HashSet内部维护一个HashMap，在add元素的时候只需要调用这个map的
+          put方法并将新增元素作为key即可，这样保证了数据不会重复，而put的value是一个HashSet里定义的实例属性，所有
+          的key共用这一个value，以减少内存占用
           HashSet不保证线程安全，可以有一个null值，也不保证元素的顺序。
           ```
   
@@ -60,7 +70,11 @@
   
           #### 介绍
           ```
-          继承自HashMap，维护了一个双向链表，重写了HashMap中的若干方法在HashMap元素变化的时候改变双向链表，同时也保证HashMap的结点和双向链表的结点是同一个对象，这样能够直接通过HashMap的结点操作双向链表。默认访问是按照插入顺序访问，即直接遍历双向链表，可以设置accessOrder为true使得访问顺序变成越最近访问的数据越晚遍历到，LinkedHashMap的双向队列的对头元素为最老的元素。不保证线程安全。利用LinkedHashMap实现LRU缓存很简单，代码如下：
+          继承自HashMap，维护了一个双向链表，重写了HashMap中的若干方法在HashMap元素变化的时候改变双向链表，同时
+          也保证HashMap的结点和双向链表的结点是同一个对象，这样能够直接通过HashMap的结点操作双向链表。默认访问是
+          按照插入顺序访问，即直接遍历双向链表，可以设置accessOrder为true使得访问顺序变成越最近访问的数据越晚遍历
+          到，LinkedHashMap的双向队列的对头元素为最老的元素。不保证线程安全。利用LinkedHashMap实现LRU缓存很简
+          单，代码如下：
 
           public LRUCache<K, V> extends LinkedHashMap<K, V> {
               // 缓存大小
@@ -70,7 +84,7 @@
                   super(16, 0.75, true);
                   this.cacheSize = cacheSize;
               }
-              // 该方法表示什么时候移除元素
+              // 该方法表示什么时候移除元素，每次向LinkedHashMap添加新元素时该方法都会被调用，如果该方法返回true，表示需要删除最老的元素
               protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
                   // 超过指定容量后移除最旧的元素
                   return size() >= cacheSize;
@@ -100,7 +114,9 @@
   
           #### 介绍
           ```
-          LinkedList实现了List接口，底层是一个双向链表，允许Null元素，LinkedList可以从头或尾，这些操作使得LinkedList可被用作堆栈（Stack）、队列（Queue）或双向队列（Deque）。LinkedList不是线程安全的。一种解决方法是在创建 List时构造一个同步的List，方法如Collections.synchronizedList方法
+          LinkedList实现了List接口，底层是一个双向链表，允许Null元素，LinkedList可以从头或尾，这些操作使得
+          LinkedList可被用作堆栈（Stack）、队列（Queue）或双向队列（Deque）。LinkedList不是线程安全的。一种
+          解决方法是在创建 List时构造一个同步的List，方法如Collections.synchronizedList方法
 
           LinkedList几个关键的方法：
           - peek：获取头结点的数据，但是不删除头结点
@@ -125,7 +141,8 @@
   
           #### 介绍
           ```
-          底层是数组，默认初始容量10，扩容时每次默认原容量1.5倍（看grow方法的实现），如果需要的容量大于原容量则直接使用需要的容量作为新容量，元素的删除和扩容时底层数组的扩容都是利用的Arrays.copyOf方法实现的
+          底层是数组，默认初始容量10，扩容时每次默认原容量1.5倍（看grow方法的实现），如果需要的容量大于原容量则直
+          接使用需要的容量作为新容量，元素的删除和扩容时底层数组的扩容都是利用的Arrays.copyOf方法实现的
           ```
 
           源码分析：[ArrayList](Java/Java源码阅读/集合类/ArrayList.md)
@@ -135,7 +152,9 @@
   
           #### 介绍
           ```
-          和ArrayList差别不大，大部分方法添加了`synchronized`关键字，所以是线程安全的。Vector默认扩容是容量增加2倍（ArrayList是1.5倍），Vector还提供了public synchronized int indexOf(Object o, int index)方法用于从index开始查找obj的下标
+          和ArrayList差别不大，大部分方法添加了`synchronized`关键字，所以是线程安全的。Vector默认扩容是容量增
+          加2倍（ArrayList是1.5倍），Vector还提供了public synchronized int indexOf(Object o, int index)
+          方法用于从index开始查找obj的下标
           ```
 
         </details>
