@@ -456,14 +456,15 @@
   
           #### 介绍
           ```
-          CyclicBarrier用于线程等待其他线程，直到指定个数的线程调用了await方法，所有等待线程才会继续执行，实现原
-          理是利用ReentrantLock，每当调用await方法时先获取独占锁，以此来线程安全的维护栅栏状态，每当一个线程调用
-          await方法后都会将栅栏的count - 1，表示需要等待的线程数量减1，释放独占锁并在从ReentrantLock创建的
-          Condition上阻塞，每个被阻塞的线程都是一个Condition对象，并组成单链表。当某个线程调用await发现数量等于
-          0时唤醒所有Condition链表上被阻塞线程并重置count，之后该线程释放独占锁继续运行。被唤醒的线程都会被添加到
-          AQS的Sync队列中尝试获取锁，每次只有一个线程能获取独占锁，在获取独占锁之后线程从doAwait方法的阻塞位置继
-          续执行并释放独占锁，这样其他线程也陆续获取锁并释放，实现所有线程都继续运行。CyclicBarrier的主要逻辑是
-          doAwait方法，下面是源码分析
+          CyclicBarrier用于线程等待其他线程，直到指定个数的线程调用了cyclicBarrier.await()方法，所有等待线程
+          才会继续执行，实现原理是利用ReentrantLock，每当调用cyclicBarrier.await()方法时先获取独占锁，以此来
+          线程安全的维护栅栏状态，每当一个线程调用cyclicBarrier.await()方法后都会将栅栏的count - 1，表示需要
+          等待的线程数量减1，当某个线程发现需要等待的数量等于0时调用从ReentrantLock对象创建的Condition对象的signalAll
+          方法唤醒所有Condition链表上被阻塞线程并重置count，之后该线程释放独占锁继续运行。被唤醒的线程都会被添加到
+          AQS的Sync队列中尝试获取锁，每次只有一个线程能获取独占锁，在获取独占锁之后线程从之前阻塞的位置继续执行并释
+          放独占锁，这样其他线程也陆续获取锁并释放，实现所有线程都继续运行。如果线程调用cyclicBarrier.await()方法
+          时发现将等待的数量减1后不为0，调用Condition对象的await方法阻塞，Condition对象的await方法会释放线程的
+          独占锁，将其放到Condition对象的等待队列并park线程。CyclicBarrier的主要逻辑是doAwait方法，下面是源码分析
           ```
 
           [CyclicBarrier](Java/Java源码阅读/并发类/CyclicBarrier.md)
@@ -517,11 +518,11 @@
           的线程，tryAcquireShared方法直接判断剩余的许可数量是否大于需要的许可数量，如果是则利用cas更新剩余的许
           可数量并返回，表示获取锁成功，否则返回负数表示获取失败，加入Sync队列阻塞。
 
-          实现原理简单说就是每次线程调用acquire方法，都会调用Semaphore类的内部类Sync对象的acquireSharedInterruptibly
-          方法，该方法会调用tryAcquireShared方法，这将使得线程判断当前许可是否满足自己的需要，如果满足则用cas更
-          新许可数量，否则入队等待，注意入队等待时当前线程需要的许可数量也会传入入队方法，等待线程被唤醒时还可以继续
-          获取需要的许可，这也是aqs中各个acquire方法的arg参数的意义，相当于表示线程请求锁的参数，在Semaphore的
-          实现中就表示线程需要的许可数
+          每次线程调用acquire方法，都会调用Semaphore类的内部类Sync对象的acquireSharedInterruptibly方法，该
+          方法会调用tryAcquireShared方法，这将使得线程判断当前许可是否满足自己的需要，如果满足则用cas更新许可数
+          量，否则入队等待，注意入队等待时当前线程需要的许可数量也会传入入队方法，等待线程被唤醒时还可以继续获取需要
+          的许可，这也是aqs中各个acquire方法的arg参数的意义，相当于表示线程请求锁的参数，在Semaphore的实现中就
+          表示线程需要的许可数
           ```
 
           [Semaphore](Java/Java源码阅读/并发类/Semaphore.md)
@@ -537,43 +538,30 @@
       ``` 
 
       #### 建造者模式
-      ```
       BeanDefinitionBuilder类
-      ```
 
       #### 适配器模式
-      ```
       Spring AOP的代理需要MethodInterceptor类型的对象执行代理逻辑，而Spring AOP解析bean的代理配置时保存的时Advisor对象，此时就用到了适配器，在真正执行代理逻辑之前会为当前bean的所有Advisor中的Advice创建MethodInterceptor对象，而实现适配的类是AdvisorAdapter，默认实现有MethodBeforeAdviceAdapter、AfterReturningAdviceAdapter、ThrowsAdviceAdapter
 
       另一个适配器是Spring MVC中的DispatcherServlet对象在处理请求时用到的，Spring MVC会根据请求的路径获取handler，handler可能是任意类型的，如基于注解的实现则handler为HandleMethod类型，基于XML的实现可能是AbstractController类型，此时Spring MVC会通过HandlerAdapter执行请求的处理，也算是一种适配吧，这里和常见的适配器模式不同的地方在于这里没有通过HandlerAdapter对象返回不同于handler的另一个接口类型，而是直接由HandlerAdapter对象根据handler执行请求
-      ```
 
       #### 代理模式
-      ```
       Spring AOP
-      ```
 
       #### 观察者模式
-      ```
       ApplicationContext的事件，bean实现了ApplicationListener接口会到收到ApplicationContext的不同动作对应的事件，如ContextClosedEvent、ContextRefreshedEvent、ContextStartedEvent、ContextStoppedEvent
-      ```
 
       #### 责任链模式
-      ```
       Spring AOP在真正执行代理逻辑时，会创建由MethodInterceptor组成的链，由ReflectiveMethodInvocation执行链的调用
-      ```
 
       #### 模版方法模式
-      ```
       Spring AOP中AbstractAutoProxyCreator实现了BeanPostProcessor接口，以实现创建bean时返回代理bean，其在wrapIfNecessary方法中定义了获取bean代理的基本逻辑，抽象方法如getAdvicesAndAdvisorsForBean由子类实现
 
       Spring IOC中AbstractBeanFactory实现了创建bean的基本逻辑，子类实现containsBeanDefinition、createBean等抽象方法完成具体逻辑
-      ```
 
       #### 策略模式
-      ```
       Spring AOP中DefaultAopProxyFactory创建代理时会根据配置选择代理的实现，可选的有JdkDynamicAopProxy和ObjenesisCglibAopProxy、这两个类都实现了AopProxy接口
-      ```
+
       </details>  
 
 - JVM相关
