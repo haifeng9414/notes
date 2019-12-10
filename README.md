@@ -265,11 +265,17 @@
   
           #### 介绍
           ```
-          线程安全的，但是是弱一致的（体现在get、clear方法和迭代器的实现），实现逻辑是，维护一个Segment数组，该数组的大小在ConcurrentHashMap创建完后久不变了，Segment类继承自ReentrantLock，同时Segment类和HashMap实现又有点像，内部有一个HashEntry数组（默认大小是2），HashEntry是个单链表结点，ConcurrentHashMap在put时先获取key对应的Segment的锁，再用HashMap类似的操作逻辑操作Segment，把数据放到Segment的HashEntry中，即分段锁，如果多线程环境下多个线程执行的key在不同的Segment，则分别获取自己对应的key的锁，互不影响（除非调用了size等需要锁住所有Segment的方法，size也不总是获取所有的Segment锁，可以看size的实现）
+          线程安全的，但是是弱一致的（体现在get、clear方法和迭代器的实现），实现逻辑是，维护一个Segment数组，该
+          数组的大小在ConcurrentHashMap创建完后久不变了，Segment类继承自ReentrantLock，同时Segment类和
+          HashMap实现又有点像，内部有一个HashEntry数组（默认大小是2），HashEntry是个单链表结点，ConcurrentHashMap
+          在put时先获取key对应的Segment的锁，再用HashMap类似的操作逻辑操作Segment，把数据放到Segment的HashEntry
+          中，即分段锁，如果多线程环境下多个线程执行的key在不同的Segment，则分别获取自己对应的key的锁，互不影
+          响（除非调用了size等需要锁住所有Segment的方法，size也不总是获取所有的Segment锁，可以看size的实现）
 
           注意点：
           get、clear方法没有加锁，直接遍历所有的Segment，所以是弱一致的
-          isEmpty方法中没有加锁，采用的是循环一次判断是否存在非空Segment，如果都为空则记住modCount，再循环一次，如果再次为空并且两次modCount相等，则返回true
+          isEmpty方法中没有加锁，采用的是循环一次判断是否存在非空Segment，如果都为空则记住modCount，再循环一次，
+          如果再次为空并且两次modCount相等，则返回true
           size方法也是循环多次（默认两次）计算modCount是否相等，不相等并超出循环次数则获取Segment锁并再次计算size
           containsValue的思路和size是一样的
           ```
@@ -281,7 +287,11 @@
   
           #### 介绍
           ```
-          JDK8的ConcurrentHashMap和JDK7的完全不一样，摒弃了JDK7的segment，即不再使用分段锁，JDK8的ConcurrentHashMap底层维护一个Node数组，并发操作时锁的最大粒度只是一个数组元素而已，JDK8的ConcurrentHashMap和JDK8的HashMap很像，也是数组 + 单链表 + 红黑树的结构，实现细节有区别，同时JDK8的ConcurrentHashMap大量使用CAS操作，并有很多的变量起到了标志位的作用，最关键的就是sizeCtl，sizeCtl的数值含义：
+          JDK8的ConcurrentHashMap和JDK7的完全不一样，摒弃了JDK7的segment，即不再使用分段锁，JDK8的
+          ConcurrentHashMap底层维护一个Node数组，并发操作时锁的最大粒度只是一个数组元素而已，JDK8的
+          ConcurrentHashMap和JDK8的HashMap很像，也是数组 + 单链表 + 红黑树的结构，实现细节有区别，同时JDK8的
+          ConcurrentHashMap大量使用CAS操作，并有很多的变量起到了标志位的作用，最关键的就是sizeCtl，sizeCtl的
+          数值含义：
           - 数组未初始化：
               - 大于0：表示根据initialCapacity调用tableSizeFor方法计算出来的初始容量
               - -1：正在初始化数组
@@ -291,18 +301,28 @@
               - 小于0：正在扩容
               - sizeCtl = (resizeStamp(n) << RESIZE_STAMP_SHIFT) + N，表示有N - 1个线程正在扩容
 
-          上面的值说明sizeCtl在不同的时候有不同的用处，理解了sizeCtl的所有含义就差不多理解了JDK8的ConcurrentHashMap的工作原理，ConcurrentHashMap的Node数组的元素也有不同的类型：
+          上面的值说明sizeCtl在不同的时候有不同的用处，理解了sizeCtl的所有含义就差不多理解了JDK8的ConcurrentHashMap
+          的工作原理，ConcurrentHashMap的Node数组的元素也有不同的类型：
           - Node：普通的单链表结点，和HashMap的单链表一样
-          - ForwardingNode：数组中存在该结点说明ConcurrentHashMap正在执行扩容操作，同时新的数组会保存在ForwardingNode结点的nextTable属性，其他线程在遍历数组的时候发现该类型结点会参与扩容过程，而对于get操作，会将寻找key的过程交给ForwardingNode结点处理，ForwardingNode结点会在新数组中寻找key
-          - TreeBin：红黑树结点，和HashMap的红黑树一样，只不过ConcurrentHashMap把红黑树结点和数组元素结点分开了，TreeBin用于维护红黑树的根结点，红黑树的内部结点都是TreeNode类型的，TreeNode不会出现在ConcurrentHashMap数组中
+          - ForwardingNode：数组中存在该结点说明ConcurrentHashMap正在执行扩容操作，同时新的数组会保存在ForwardingNode
+          结点的nextTable属性，其他线程在遍历数组的时候发现该类型结点会参与扩容过程，而对于get操作，会将寻找key的过程交给
+          ForwardingNode结点处理，ForwardingNode结点会在新数组中寻找key
+          - TreeBin：红黑树结点，和HashMap的红黑树一样，只不过ConcurrentHashMap把红黑树结点和数组元素结点分开了，
+          TreeBin用于维护红黑树的根结点，红黑树的内部结点都是TreeNode类型的，TreeNode不会出现在ConcurrentHashMap数组中
 
-          还有一种特殊的结点：ReservationNode，用于锁住数组的空元素，用于computeIfAbsent方法在空数组元素上进行Function调用时锁住数组空元素，如果在Function中再次调用computeIfAbsent方法并且刚好又定位到了被锁住的空元素，此时代码会进入一个死循环，所以使用ConcurrentHashMap时，不要在computeIfAbsent的Function中再去执行更新其它节点value的操作。
-          ConcurrentHashMap在只有在put和remove等操作时才会锁住需要操作的数组元素，把锁的范围最小化了，具体的put和remove等过程看源码的注释
+          还有一种特殊的结点：ReservationNode，用于锁住数组的空元素，用于computeIfAbsent方法在空数组元素上进行
+          Function调用时锁住数组空元素，如果在Function中再次调用computeIfAbsent方法并且刚好又定位到了被锁住的
+          空元素，此时代码会进入一个死循环，所以使用ConcurrentHashMap时，不要在computeIfAbsent的Function中
+          再去执行更新其它节点value的操作。
+          ConcurrentHashMap在只有在put和remove等操作时才会锁住需要操作的数组元素，把锁的范围最小化了，具体的put
+          和remove等过程看源码的注释
 
           注意点：
           ConcurrentHashMap通过大量的cas操作避免加锁，只有在更新某个数组元素时才在该数组元素加锁
-          ConcurrentHashMap的size方法不再是遍历数组获取元素大小，而是用CounterCell数组和一个baseCount一块组成最后的结果，用分段锁提高了更新size时的并发级别
-          扩容时思路是扩容过程中可以有其他线程加入扩容过程，每当某个线程在遍历数组时发现了正在进行扩容，就会加入扩容过程，每个线程都领取一定数量的数组元素并负责传输这些数组元素到新数组，同时用sizeCtl维护正在扩容的状态
+          ConcurrentHashMap的size方法不再是遍历数组获取元素大小，而是用CounterCell数组和一个baseCount一块组
+          成最后的结果，用分段锁提高了更新size时的并发级别
+          扩容时思路是扩容过程中可以有其他线程加入扩容过程，每当某个线程在遍历数组时发现了正在进行扩容，就会加入扩容
+          过程，每个线程都领取一定数量的数组元素并负责传输这些数组元素到新数组，同时用sizeCtl维护正在扩容的状态
 
           ```
 
@@ -314,7 +334,10 @@
           #### 介绍
           ```
           ConcurrentSkipListMap是线程安全的有序map，底层采用的是“跳表数据结构”
-          实现原理简单来说就是利用跳表的元素有序性，在查找结点时找到前驱结点并判断前驱的后一个结点是不是要找的，插入时也是找到前驱结点，之后在前驱后面插入新结点，在插入结点时利用随机数判断是否需要添加该结点的Index（1/4的概率），如果需要则再根据随机数的二进制中1的个数（最低位的1不算）判断该结点的Index最高到第几层（最多32层），如果计算结果超过了当前最高层数则新增一层，否则在计算出来的每一层都新建一个Index。
+          实现原理简单来说就是利用跳表的元素有序性，在查找结点时找到前驱结点并判断前驱的后一个结点是不是要找的，插入
+          时也是找到前驱结点，之后在前驱后面插入新结点，在插入结点时利用随机数判断是否需要添加该结点的Index（1/4的概率），
+          如果需要则再根据随机数的二进制中1的个数（最低位的1不算）判断该结点的Index最高到第几层（最多32层），如果
+          计算结果超过了当前最高层数则新增一层，否则在计算出来的每一层都新建一个Index。
           主要逻辑在doGet、doPut、doRemove
           ```
 
@@ -325,8 +348,10 @@
   
           #### 介绍
           ```
-          CopyOnWriteArrayList是使用空间换时间的方式进行工作，它主要适用于读多写少，并且数据内容变化比较少的场景（最好初始化时就加载数据到CopyOnWriteArrayList中）
-          实现方式是使用ReentrantLock，任何会修改数组的操作都复制出一个新数组并在新数组上操作，之后更新CopyOnWriteArrayList的数组，这样在遍历期间即使发生了修改操作，遍历期间的数组还是没有变化的，所以任何遍历操作都不需要加锁
+          CopyOnWriteArrayList是使用空间换时间的方式进行工作，它主要适用于读多写少，并且数据内容变化比较少的场景
+          （最好初始化时就加载数据到CopyOnWriteArrayList中）
+          实现方式是使用ReentrantLock，任何会修改数组的操作都复制出一个新数组并在新数组上操作，之后更新CopyOnWriteArrayList
+          的数组，这样在遍历期间即使发生了修改操作，遍历期间的数组还是没有变化的，所以任何遍历操作都不需要加锁
           ```
 
           [CopyOnWriteArrayList](CopyOnWriteArrayList.md)
@@ -336,10 +361,19 @@
   
           #### 介绍
           ```
-          AbstractQueuedSynchronizer实现了JUC包下工具类的基础框架，是Java并发编程最重要的类之一，实现原理参考了CLH Lock。实现原理是：
-          维护一个双向队列，也就是Sync队列，初始情况下队列为空，每个线程在尝试获取锁之前都会创建一个代表自己的结点并入队，第一个结点入队时队列为空，此时会额外创建一个头结点，使得第一个入队的线程结点为头结点的后继，对于之后入队的结点，添加到队列尾。所有结点在无限循环中不断尝试获取锁，成功获取锁的条件是线程结点为头结点的后继并且tryAcquire方法返回true（由子类实现该方法），获取成功后会更新自己为头结点，所以除了初始化队列时创建的结点外，所有头结点都表示当前持有锁的线程结点，如果获取失败会更新自己的前驱状态为SIGNAL，表示前驱在释放锁的时候需要唤醒后继，之后调用LockSupport.park陷入阻塞。
-          当持有锁的线程释放锁时，如果头结点的状态为SIGNAL或者PROPAGATE（该状态的作用见setHeadAndPropagate方法），会更新自己的状态为0（表示该结点已经没用了），并唤醒后继结点，后继结点从阻塞中被唤醒并重新开始循环尝试获取锁，成功后更新自己为头结点。
-          AQS还有Condition队列，一个AQS有一个Sync队列和若干个Condition队列（一个Condition队列对应一个Condition对象），Condition队列是个单链表，Condition用法如下：
+          AbstractQueuedSynchronizer实现了JUC包下工具类的基础框架，是Java并发编程最重要的类之一，实现原理参
+          考了CLH Lock。实现原理是：
+          维护一个双向队列，也就是Sync队列，初始情况下队列为空，每个线程在尝试获取锁之前都会创建一个代表自己的结点
+          并入队，第一个结点入队时队列为空，此时会额外创建一个头结点，使得第一个入队的线程结点为头结点的后继，对于
+          之后入队的结点，添加到队列尾。所有结点在无限循环中不断尝试获取锁，成功获取锁的条件是线程结点为头结点的后
+          继并且tryAcquire方法返回true（由子类实现该方法），获取成功后会更新自己为头结点，所以除了初始化队列时创
+          建的结点外，所有头结点都表示当前持有锁的线程结点，如果获取失败会更新自己的前驱状态为SIGNAL，表示前驱在释
+          放锁的时候需要唤醒后继，之后调用LockSupport.park陷入阻塞。
+          当持有锁的线程释放锁时，如果头结点的状态为SIGNAL或者PROPAGATE（该状态的作用见setHeadAndPropagate方法），
+          会更新自己的状态为0（表示该结点已经没用了），并唤醒后继结点，后继结点从阻塞中被唤醒并重新开始循环尝试获取锁，
+          成功后更新自己为头结点。
+          AQS还有Condition队列，一个AQS有一个Sync队列和若干个Condition队列（一个Condition队列对应一个Condition对象），
+          Condition队列是个单链表，Condition用法如下：
           
           ReentrantLock lock = new ReentrantLock();
           Condition condition = lock.newCondition();
@@ -364,7 +398,11 @@
               lock.unlock();
           }
 
-          上面从lock中创建了一个condition对象，thread1执行到await方法并被阻塞等待其他线程唤醒，main thread1秒后执行signal唤醒一个在condition上等待的线程，之后thread1就能继续执行了。这里的实现原理是Condition队列上保存了所有在该condition上等待的线程结点（这些结点只在Condition队列上，不在Sync队列上），在调用了condition对象的signal方法后，调用线程会将Condition队列上的头结点添加到Sync队列参与锁竞争，如果调用的是signalAll方法，则所有Condition队列上的结点都会被添加到Sync队列参与锁竞争。
+          上面从lock中创建了一个condition对象，thread1执行到await方法并被阻塞等待其他线程唤醒，main thread1秒
+          后执行signal唤醒一个在condition上等待的线程，之后thread1就能继续执行了。这里的实现原理是Condition队
+          列上保存了所有在该condition上等待的线程结点（这些结点只在Condition队列上，不在Sync队列上），在调用了
+          condition对象的signal方法后，调用线程会将Condition队列上的头结点添加到Sync队列参与锁竞争，如果调用的
+          是signalAll方法，则所有Condition队列上的结点都会被添加到Sync队列参与锁竞争。
           上面是AQS的大致逻辑，涉及到的细节见下面的源码分析
           ```
 
@@ -375,7 +413,10 @@
   
           #### 介绍
           ```
-          ReentrantLock的实现原理很简单，利用AQS的独占锁和state字段，state字段表示加锁的次数，当线程获取锁是先判断state是否等于0，如果是则cas操作status，成功后设置自己为exclusiveOwnerThread，获取锁的线程重复加锁时发现自己就是exclusiveOwnerThread，直接将state递增，释放时递减，释放到0时唤醒后继，同样有公平和非公平锁两种
+          ReentrantLock的实现原理很简单，利用AQS的独占锁和state字段，state字段表示加锁的次数，当线程获取锁是先
+          判断state是否等于0，如果是则cas操作status，成功后设置自己为exclusiveOwnerThread，获取锁的线程重复加
+          锁时发现自己就是exclusiveOwnerThread，直接将state递增，释放时递减，释放到0时唤醒后继，同样有公平和非
+          公平锁两种
           ```
 
           [ReentrantLock](ReentrantLock.md)
@@ -385,8 +426,14 @@
   
           #### 介绍
           ```
-          闭锁可以初始化一个数量，所有在该闭锁上调用await方法的线程都会阻塞直到该闭锁上的countDown方法被调用指定次数，闭锁只能使用一次
-          实现原理是构造函数中指定了需要的countDown的次数并设为闭锁的状态，线程在await方法中会调用tryAcquireShared方法，该方法判断当前闭锁的状态是否为0来判断是否能够获取锁，也就是是否需要等待，如果状态不为0则进入aqs的等待队列，countDown方法会在每次调用的时候执行releaseShared方法将闭锁状态减1，并在减到0时（releaseShared方法会首先调用tryReleaseShared方法判断是否真要执行释放锁操作，减到0使得tryReleaseShared方法返回true，则会执行doReleaseShared方法释放共享锁）调用doReleaseShared唤醒头结点的后继，被唤醒的线程还会调用setHeadAndPropagate方法唤醒其他线程
+          闭锁可以初始化一个数量，所有在该闭锁上调用await方法的线程都会阻塞直到该闭锁上的countDown方法被调用指定
+          次数，闭锁只能使用一次
+          实现原理是构造函数中指定了需要的countDown的次数并设为闭锁的状态，线程在await方法中会调用tryAcquireShared
+          方法，该方法判断当前闭锁的状态是否为0来判断是否能够获取锁，也就是是否需要等待，如果状态不为0则进入aqs的等
+          待队列，countDown方法会在每次调用的时候执行releaseShared方法将闭锁状态减1，并在减到0时（releaseShared
+          方法会首先调用tryReleaseShared方法判断是否真要执行释放锁操作，减到0使得tryReleaseShared方法返回true，
+          则会执行doReleaseShared方法释放共享锁）调用doReleaseShared唤醒头结点的后继，被唤醒的线程还会调用
+          setHeadAndPropagate方法唤醒其他线程
           ```
 
           [CountDownLatch](CountDownLatch.md)
@@ -396,7 +443,14 @@
   
           #### 介绍
           ```
-          CyclicBarrier用于线程等待其他线程，直到指定个数的线程调用了await方法，所有等待线程才会继续执行，实现原理是利用ReentrantLock，每当调用await方法时先获取独占锁，以此来线程安全的维护栅栏状态，每当一个线程调用await方法后都会将栅栏的count - 1，表示需要等待的线程数量减1，释放独占锁并在从ReentrantLock创建的Condition上阻塞，每个被阻塞的线程都是一个Condition对象，并组成单链表。当某个线程调用await发现数量等于0时唤醒所有Condition链表上被阻塞线程并重置count，之后该线程释放独占锁继续运行。被唤醒的线程都会被添加到AQS的Sync队列中尝试获取锁，每次只有一个线程能获取独占锁，在获取独占锁之后线程从doAwait方法的阻塞位置继续执行并释放独占锁，这样其他线程也陆续获取锁并释放，实现所有线程都继续运行。CyclicBarrier的主要逻辑是doAwait方法，下面是源码分析
+          CyclicBarrier用于线程等待其他线程，直到指定个数的线程调用了await方法，所有等待线程才会继续执行，实现原
+          理是利用ReentrantLock，每当调用await方法时先获取独占锁，以此来线程安全的维护栅栏状态，每当一个线程调用
+          await方法后都会将栅栏的count - 1，表示需要等待的线程数量减1，释放独占锁并在从ReentrantLock创建的
+          Condition上阻塞，每个被阻塞的线程都是一个Condition对象，并组成单链表。当某个线程调用await发现数量等于
+          0时唤醒所有Condition链表上被阻塞线程并重置count，之后该线程释放独占锁继续运行。被唤醒的线程都会被添加到
+          AQS的Sync队列中尝试获取锁，每次只有一个线程能获取独占锁，在获取独占锁之后线程从doAwait方法的阻塞位置继
+          续执行并释放独占锁，这样其他线程也陆续获取锁并释放，实现所有线程都继续运行。CyclicBarrier的主要逻辑是
+          doAwait方法，下面是源码分析
           ```
 
           [CyclicBarrier](CyclicBarrier.md)
@@ -440,11 +494,21 @@
           release
           get permit
 
-          初始化为-5表示开始时有-5个许可证，每次调用release方法增加一个许可证，在第六次调用时子线程获得到许可证，打印了get permit。
+          初始化为-5表示开始时有-5个许可证，每次调用release方法增加一个许可证，在第六次调用时子线程获得到许可证，
+          打印了get permit。
 
-          Semaphore有公平和非公平两种模式，和其他锁的公平非公平的定义一样，公平锁的情况下，每个线程尝试获取许可时先判断是否存在比他等待获取锁的时间更久的线程，如果存在则获取失败（tryAcquireShared方法返回-1），并被添加到Sync队列阻塞，如果不存在并且需要的许可数量小于剩余的许可数量，则利用cas更新剩余的许可数量并直接返回，表示获取锁成功；非公平锁的情况下，每个线程在尝试获取锁的时候不会考虑是否存在比他等待获取锁的时间更久的线程，tryAcquireShared方法直接判断剩余的许可数量是否大于需要的许可数量，如果是则利用cas更新剩余的许可数量并返回，表示获取锁成功，否则返回负数表示获取失败，加入Sync队列阻塞。
+          Semaphore有公平和非公平两种模式，和其他锁的公平非公平的定义一样，公平锁的情况下，每个线程尝试获取许可时
+          先判断是否存在比他等待获取锁的时间更久的线程，如果存在则获取失败（tryAcquireShared方法返回-1），并被
+          添加到Sync队列阻塞，如果不存在并且需要的许可数量小于剩余的许可数量，则利用cas更新剩余的许可数量并直接返
+          回，表示获取锁成功；非公平锁的情况下，每个线程在尝试获取锁的时候不会考虑是否存在比他等待获取锁的时间更久
+          的线程，tryAcquireShared方法直接判断剩余的许可数量是否大于需要的许可数量，如果是则利用cas更新剩余的许
+          可数量并返回，表示获取锁成功，否则返回负数表示获取失败，加入Sync队列阻塞。
 
-          实现原理简单说就是每次线程调用acquire方法，都会调用Semaphore类的内部类Sync对象的acquireSharedInterruptibly方法，该方法会调用tryAcquireShared方法，这将使得线程判断当前许可是否满足自己的需要，如果满足则用cas更新许可数量，否则入队等待，注意入队等待时当前线程需要的许可数量也会传入入队方法，等待线程被唤醒时还可以继续获取需要的许可，这也是aqs中各个acquire方法的arg参数的意义，相当于表示线程请求锁的参数，在Semaphore的实现中就表示线程需要的许可数
+          实现原理简单说就是每次线程调用acquire方法，都会调用Semaphore类的内部类Sync对象的acquireSharedInterruptibly
+          方法，该方法会调用tryAcquireShared方法，这将使得线程判断当前许可是否满足自己的需要，如果满足则用cas更
+          新许可数量，否则入队等待，注意入队等待时当前线程需要的许可数量也会传入入队方法，等待线程被唤醒时还可以继续
+          获取需要的许可，这也是aqs中各个acquire方法的arg参数的意义，相当于表示线程请求锁的参数，在Semaphore的
+          实现中就表示线程需要的许可数
           ```
 
           [Semaphore](Semaphore.md)
