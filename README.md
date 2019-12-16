@@ -1607,7 +1607,7 @@
         ```
 
         #### DEPENDENT UNION & DEPENDENT SUBQUERY
-        DEPENDENT UNION，UNION中的第二个或后面的SELECT语句，但结果取决于外面的查询；DEPENDENT SUBQUERY，子查询中的第一个SELECT，但结果取决于外面的查询
+        DEPENDENT UNION，UNION中的第二个或后面的SELECT语句，但结果取决于外面的查询；DEPENDENT SUBQUERY，关联子查询
         ```
         mysql> explain select * from employee where id in (select id from employee where id = 1 union all select id from employee where id = 2);
         +----+--------------------+------------+-------+---------------+---------+---------+-------+------+-----------------+

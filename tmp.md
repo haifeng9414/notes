@@ -254,3 +254,23 @@ type Store interface {
 之后是Reflector，Reflector会列举出所有现有的符合expectType对象，并入队这些对象的Sync Delta，同时会监控execptType对象的变化，将Add、Update、Delete等Delta入队，如果设置了resyncPeriod，则会定时调用store的Resync方法，store实际上就是DeltaFIFO
 
 Controller就是利用Reflector获取全量对象并监控对象的变化，并且将所有对象对应的Delta从Queue中取出交由ProcessFunc处理
+
+优化点：
+1. redis-operator从从节点选择master时可以考虑根据监控获取负载来选择而不是直接返回第一个
+   1. 直接在选择时根据prometheus的数据选择从节点
+   2. 后台维护一个线程根据prometheus的数据设置从节点的优先级
+2. redis-operator可以考虑使用代理和Redis集群的方式实现高可用
+3. 云管考虑使用CMDB（IT系统所有组件相关的信息库）保存虚拟机的属性，从而直到一个虚拟机如果关闭了会造成什么影响
+   1. 目前只是用标签、虚拟机名称、工作空间做了虚拟机的识别
+4. 没有真正做到模块化，导致代码重复度过高
+
+线程池的参数、拒绝策略、可用的阻塞队列
+
+堆外内存的作用：
+1. 因为分配在堆外，所以减少GC的暂停时间（堆外内存不受GC影响，但是堆外内存归属的的JAVA对象是在堆上且能够被GC回收的，一旦它被回收，JVM将释放堆外内存的堆外空间）
+2. 加快了复制的速度。因为堆内在flush到远程时，会先复制到直接内存（非堆内存），然后在发送；而堆外内存相当于省略掉了这个工作
+3. 可以扩展至更大的内存空间，不受堆大小限制
+
+缺点：只能存字节数组、堆外内存难以控制，如果内存泄漏，很难排查
+
+项目中的设计模式
