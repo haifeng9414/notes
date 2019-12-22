@@ -526,7 +526,58 @@
           ```
 
           [Semaphore](Java/Java源码阅读/并发类/Semaphore.md)
-        </details>
+      </details>
+
+- 微服务
+  - Spring Cloud
+    - <details><summary>简介</summary>
+     
+      Spring Cloud的源码主要集中在各个组建依赖的第三方工具包中，Spring相关的代码只是对这些工具包中的类的配置，利用Spring Boot Starter方便继承到微服务项目中，而Spring Boot的实现原理在[Spring Boot的笔记](https://github.com/haifeng9414/spring-boot)中已经分析过了。对于Spring Cloud用到的那些组建的源码分析，太多了，有空或者需要的时候再看吧，这里只是对Spring Cloud里常用组建的简单介绍。
+
+      </details> 
+
+    - <details><summary>注册中心-Eureka</summary>
+     
+      Spring Cloud Eureka是基于Netflix Eureka的二次封装，提供服务治理功能，实现各个微服务实例的自动化注册与发现。
+
+      Eureka通过心跳判断注册的微服务实例的可用性，不可用的服务将被剔除。Eureka有自我保护机制，如果15分钟内试跳失败的比例超过85%，则不再进行服务剔除。
+
+      </details>
+
+    - <details><summary>负载均衡-Ribbon</summary>
+     
+      Spring Cloud Ribbon是基于Netflix Ribbon的二次封装，提供REST服务调用请求的负载均衡。
+
+      Ribbon通过拦截RestTemplate对象请求的执行实现负载均衡，客户端只需要在RestTemplate对象上加上`@LoadBalanced`注解即可打开负载均衡，调用时URL的Host写成被调用的服务名称即可。
+
+      常用的负载均衡策略有：
+      1. 随机，默认策略。
+      2. 线性轮询。
+      3. 基于权重的线性轮询，该类型的策略会启动一个定时任务计算每个服务实例的权重，权重计算基于服务的响应时间。
+      4. 客户端自定义策略，自定义策略默认使用线性轮询，客户端可以继承该策略实现自己的策略。
+      5. BestAvailable，该策略继承自自定义策略类，内部维护了一个LoadBalancerStats对象保存微服务实例的统计信息，统计信息中记录了微服务实例的请求数量。BestAvailable使用请求数量最少的微服务实例作为请求实例。
+
+      </details>
+
+    - <details><summary>服务容错保护-Hystrix</summary>
+     
+      Spring Cloud Hystrix是基于Netflix Hystrix的二次封装，实现了断路器、线程隔离等服务保护功能。
+
+      使用Hystrix时在service的方法上加`@HystrixCommand`注解，注解的值设置为断路时的fallback方法名。
+
+      Hystrix使用“舱壁模式”为每个微服务类型都分配了一个专属线程池，使得不会因为某个服务的问题影响到其他服务，如果某个服务类型的线程池满了，则会执行fallback方法，也叫服务降级。
+
+      对于服务调用，Hystrix会讲调用的结果，如成功、失败、拒绝、超时等信息交由其断路器，断路器保存这些信息来决定针对某个服务，其对应的断路器是否打开，如果打开则进行服务降级。被降级后，指定时间内（默认5秒）相关请求都会被降级，指定时间后，请求将被允许执行，如果再次执行失败，则再次降级指定时间，否则关闭断路器。
+
+      </details>
+
+    - <details><summary>API网关-Zuul</summary>
+     
+      Spring Cloud Zuul是基于Netflix Zuul的二次封装，作为微服务系统的门面，实现了请求路由和请求过滤等功能。
+
+      Zuul将自己注册到Eureka，获取微服务实例，从而能够进行请求的路由，Zuul还提供了一套过滤器机制，实现读请求的校验。
+
+      </details>
     
 - 设计模式
   - 平时碰到的设计模式
