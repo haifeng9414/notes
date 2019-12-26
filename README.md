@@ -4,16 +4,10 @@
       - <details><summary>HashMap-JDK7</summary>
   
           #### 介绍
-          ```
-          实现原理是维护一个数组，存放元素时根据key的hash值获取数组位置并添加到该位置，如果发生冲突则用单链表解决
-          默认大小为16，默认负载因子为0.75，发送扩容时容量扩大两倍
-          ```
+          实现原理是维护一个数组，存放元素时根据key的hash值获取数组位置并添加到该位置，如果发生冲突则用单链表解决默认大小为16，默认负载因子为0.75，发送扩容时容量扩大两倍
           
           #### 为什么HashMap-JDK7在并发下可能会死循环？
-          ```
-          由于rehash时是直接将元素放到新数组的元素头，这会使得rehash后链表元素顺序颠倒，并且如果两个线程同时rehash
-          ，可能会导致某个数组元素的链表存在环，使得get该位置的元素导致死循环
-          ```
+          由于rehash时是直接将元素放到新数组的元素头，这会使得rehash后链表元素顺序颠倒，并且如果两个线程同时rehash，可能会导致某个数组元素的链表存在环，使得get该位置的元素导致死循环
   
           源码分析：[HashMap-JDK7](Java/Java源码阅读/集合类/HashMap-JDK7.md)
         </details>
@@ -21,22 +15,13 @@
       - <details><summary>HashMap-JDK8</summary>
   
           #### 介绍
-          ```
-          和JDK7的HashMap不同之处是引入了红黑树，默认情况下，当Map的key数量超过64时，如果某个数组的链表元素大于等
-          于8，则将该链表转为红黑树。红黑树的结点也是双向链表的结点，红黑树的根结点总是双向链表的头结点，用双向链表的
-          目的是在每次将单链表转换为红黑树后，数组的链表头可能不是红黑树的根结点，而每次需要访问该红黑树的时候都找一次
-          root效率很低，所以在每次单链表转换完红黑树后会运行moveRootToFront方法，该方法将红黑树的root移动到数组的
-          链表头，以便直接就能访问到。注意双向链表的顺序和红黑树的结点大小没有关系，唯一的关系是双向链表头等于红黑树的
-          root，可以看treeifyBin方法的实现。
-          ```
+          和JDK7的HashMap不同之处是引入了红黑树，默认情况下，当Map的key数量超过64时，如果某个数组的链表元素大于等于8，则将该链表转为红黑树。红黑树的结点也是双向链表的结点，红黑树的根结点总是双向链表的头结点，用双向链表的目的是在每次将单链表转换为红黑树后，数组的链表头可能不是红黑树的根结点，而每次需要访问该红黑树的时候都找一次root效率很低，所以在每次单链表转换完红黑树后会运行moveRootToFront方法，该方法将红黑树的root移动到数组的
+          链表头，以便直接就能访问到。注意双向链表的顺序和红黑树的结点大小没有关系，唯一的关系是双向链表头等于红黑树的root，可以看treeifyBin方法的实现。
 
-          HashMap-JDK7的rehash在并发下可能会死循环，HashMap-JDK8的rehash过程和HashMap-JDK7的不一样，
-          在一个数组元素上直接找到两条链表，这样不会出现HashMap-JDK7的问题，但是HashMap-JDK8仍然是线程不安全的，
-          如多个线程put时找到了同一个数组元素，都想要将自己的值置于原数组元素的next指针位置，则可能某个线程执行next
-          赋值时就将其他线程刚赋值的元素给覆盖了
+          HashMap-JDK7的rehash在并发下可能会死循环，HashMap-JDK8的rehash过程和HashMap-JDK7的不一样，在一个数组元素上直接找到两条链表，这样不会出现HashMap-JDK7的问题，但是HashMap-JDK8仍然是线程不安全的，
+          如多个线程put时找到了同一个数组元素，都想要将自己的值置于原数组元素的next指针位置，则可能某个线程执行next赋值时就将其他线程刚赋值的元素给覆盖了
 
-          另外，HashMap-JDK8没有任何并发限制，所以在resize时由于数组的状态还不确定，此时get和put的结果都是不确定的，
-          可能get操作时获取到的是null，实际上是有值的，只不过正在resize，值还未归位
+          另外，HashMap-JDK8没有任何并发限制，所以在resize时由于数组的状态还不确定，此时get和put的结果都是不确定的，可能get操作时获取到的是null，实际上是有值的，只不过正在resize，值还未归位
   
           源码分析：[HashMap-JDK8](Java/Java源码阅读/集合类/HashMap-JDK8.md)
         </details>
@@ -44,12 +29,8 @@
       - <details><summary>HashSet</summary>
   
           #### 介绍
-          ```
-          HashSet的作用的保存一组没有重复的数据，HashSet内部维护一个HashMap，在add元素的时候只需要调用这个map的
-          put方法并将新增元素作为key即可，这样保证了数据不会重复，而put的value是一个HashSet里定义的实例属性，所有
-          的key共用这一个value，以减少内存占用
-          HashSet不保证线程安全，可以有一个null值，也不保证元素的顺序。
-          ```
+          HashSet的作用的保存一组没有重复的数据，HashSet内部维护一个HashMap，在add元素的时候只需要调用这个map的put方法并将新增元素作为key即可，这样保证了数据不会重复，而put的value是一个HashSet里定义的实例属性，所有
+          的key共用这一个value，以减少内存占用HashSet不保证线程安全，可以有一个null值，也不保证元素的顺序。
   
           源码分析：[HashSet](Java/Java源码阅读/集合类/HashSet.md)
         </details>
@@ -57,11 +38,7 @@
       - <details><summary>Hashtable</summary>
   
           #### 介绍
-          ```
-          Hashtable底层是数组，数组的元素是单链表，和HashMap一样存在loadFactor和threshold，默认容量是11
-          Hashtable的实现方式和HashMap很像，不过实现过程很简单，比如求元素在数组中的位置直接使用key.hashCode() % table.length而不是HashMap中的位运算
-          Hashtable是线程安全的，大部分方法都添加了synchronized
-          ```
+          Hashtable底层是数组，数组的元素是单链表，和HashMap一样存在loadFactor和threshold，默认容量是11。Hashtable的实现方式和HashMap很像，不过实现过程很简单，比如求元素在数组中的位置直接使用key.hashCode() % table.length而不是HashMap中的位运算Hashtable是线程安全的，大部分方法都添加了synchronized
   
           源码分析：[Hashtable](Java/Java源码阅读/集合类/Hashtable.md)
         </details>
@@ -69,13 +46,8 @@
       - <details><summary>LinkedHashMap</summary>
   
           #### 介绍
-          ```
-          继承自HashMap，维护了一个双向链表，重写了HashMap中的若干方法在HashMap元素变化的时候改变双向链表，同时
-          也保证HashMap的结点和双向链表的结点是同一个对象，这样能够直接通过HashMap的结点操作双向链表。默认访问是
-          按照插入顺序访问，即直接遍历双向链表，可以设置accessOrder为true使得访问顺序变成越最近访问的数据越晚遍历
-          到，LinkedHashMap的双向队列的对头元素为最老的元素。不保证线程安全。利用LinkedHashMap实现LRU缓存很简
-          单，代码如下：
-
+          继承自HashMap，维护了一个双向链表，重写了HashMap中的若干方法在HashMap元素变化的时候改变双向链表，同时也保证HashMap的结点和双向链表的结点是同一个对象，这样能够直接通过HashMap的结点操作双向链表。默认访问是按照插入顺序访问，即直接遍历双向链表，可以设置accessOrder为true使得访问顺序变成越最近访问的数据越晚遍历到，LinkedHashMap的双向队列的对头元素为最老的元素。不保证线程安全。利用LinkedHashMap实现LRU缓存很简单，代码如下：
+          ```java
           public LRUCache<K, V> extends LinkedHashMap<K, V> {
               // 缓存大小
               private int cacheSize;
@@ -91,6 +63,106 @@
               }
           }
           ```
+
+          如果不使用LinkedHashMap，实现LRU也很简单：
+          ```java
+          class LRUCache {
+              private Node head;
+              private Node tail;
+              private Map<Integer, Node> map;
+              private int cap;
+
+              private LRUCache(int capacity) {
+                  this.cap = capacity;
+                  this.map = new HashMap<>();
+              }
+
+              private int get(int key) {
+                  if (map.get(key) == null) {
+                      return -1;
+                  }
+
+                  Node t = map.get(key);
+
+                  removeNode(t);
+                  offerNode(t);
+
+                  return t.value;
+              }
+
+              private void put(int key, int value) {
+                  if (map.containsKey(key)) {
+                      Node t = map.get(key);
+                      t.value = value;
+
+                      //move to tail
+                      removeNode(t);
+                      offerNode(t);
+                  } else {
+                      if (map.size() >= cap) {
+                          //delete head
+                          map.remove(head.key);
+                          removeNode(head);
+                      }
+
+                      //add to tail
+                      Node node = new Node(key, value);
+                      offerNode(node);
+                      map.put(key, node);
+                  }
+              }
+
+              private void removeNode(Node n) {
+                  if (n.prev != null) {
+                      n.prev.next = n.next;
+                  } else {
+                      head = n.next;
+                  }
+
+                  if (n.next != null) {
+                      n.next.prev = n.prev;
+                  } else {
+                      tail = n.prev;
+                  }
+              }
+
+              private void offerNode(Node n) {
+                  if (tail != null) {
+                      tail.next = n;
+                  }
+
+                  n.prev = tail;
+                  n.next = null;
+                  tail = n;
+
+                  if (head == null) {
+                      head = tail;
+                  }
+              }
+
+              static class Node {
+                  int key;
+                  int value;
+                  Node prev;
+                  Node next;
+
+                  private Node(int key, int value) {
+                      this.key = key;
+                      this.value = value;
+                  }
+              }
+
+              public static void main(String[] args) {
+                  LRUCache cache = new LRUCache(2);
+                  cache.put(1, 1);
+                  cache.put(2, 4);
+                  cache.put(3, 9);
+                  assertEquals(cache.get(1), -1);
+                  assertEquals(cache.get(2), 4);
+                  assertEquals(cache.get(3), 9);
+              }
+          }
+          ```
   
           源码分析：[LinkedHashMap](Java/Java源码阅读/集合类/LinkedHashMap.md)
         </details>
@@ -98,24 +170,20 @@
       - <details><summary>LinkedHashSet</summary>
   
           #### 介绍
+          LinkedHashSet能够在HashSet功能的基础上保证插入元素的顺序，可以用插入的顺序访问元素，不保证线程安全LinkedHashSet继承自HashSet，并且构造函数都是调用的父类构造函数即HashSet的构造函数:
           ```
-          LinkedHashSet能够在HashSet功能的基础上保证插入元素的顺序，可以用插入的顺序访问元素，不保证线程安全
-          LinkedHashSet继承自HashSet，并且构造函数都是调用的父类构造函数即HashSet的构造函数:
-
           HashSet(int initialCapacity, float loadFactor, boolean dummy) {
               map = new LinkedHashMap<>(initialCapacity, loadFactor);    
           }
+          ```
 
           这样底层就不像HashSet用的是HashMap，而是用的LinkedHashMap，利用LinkedHashMap实现按数据插入顺序访问
-          ```
         </details>
 
       - <details><summary>LinkedList</summary>
   
           #### 介绍
-          ```
-          LinkedList实现了List接口，底层是一个双向链表，允许Null元素，LinkedList可以从头或尾，这些操作使得
-          LinkedList可被用作堆栈（Stack）、队列（Queue）或双向队列（Deque）。LinkedList不是线程安全的。一种
+          LinkedList实现了List接口，底层是一个双向链表，允许Null元素，LinkedList可以从头或尾，这些操作使得LinkedList可被用作堆栈（Stack）、队列（Queue）或双向队列（Deque）。LinkedList不是线程安全的。一种
           解决方法是在创建 List时构造一个同步的List，方法如Collections.synchronizedList方法
 
           LinkedList几个关键的方法：
@@ -132,18 +200,13 @@
           - push：添加数据到队头
           - pop：删除队头
 
-          其中push和pop用来实现Stack的操作
-          offer和poll实现队列操作
-          ```
+          其中push和pop用来实现Stack的操作，offer和poll实现队列操作
         </details>
 
       - <details><summary>ArrayList</summary>
   
           #### 介绍
-          ```
-          底层是数组，默认初始容量10，扩容时每次默认原容量1.5倍（看grow方法的实现），如果需要的容量大于原容量则直
-          接使用需要的容量作为新容量，元素的删除和扩容时底层数组的扩容都是利用的Arrays.copyOf方法实现的
-          ```
+          底层是数组，默认初始容量10，扩容时每次默认原容量1.5倍（看grow方法的实现），如果需要的容量大于原容量则直接使用需要的容量作为新容量，元素的删除和扩容时底层数组的扩容都是利用的Arrays.copyOf方法实现的
 
           源码分析：[ArrayList](Java/Java源码阅读/集合类/ArrayList.md)
         </details>
@@ -151,20 +214,14 @@
       - <details><summary>Vector</summary>
   
           #### 介绍
-          ```
-          和ArrayList差别不大，大部分方法添加了`synchronized`关键字，所以是线程安全的。Vector默认扩容是容量增
-          加2倍（ArrayList是1.5倍），Vector还提供了public synchronized int indexOf(Object o, int index)
-          方法用于从index开始查找obj的下标
-          ```
+          和ArrayList差别不大，大部分方法添加了`synchronized`关键字，所以是线程安全的。Vector默认扩容是容量增加2倍（ArrayList是1.5倍），Vector还提供了public synchronized int indexOf(Object o, int index)方法用于从index开始查找obj的下标
 
         </details>
 
       - <details><summary>Stack</summary>
   
           #### 介绍
-          ```
           Stack继承Vector，所以底层也是数组，并且是线程安全的，所有实现的方法都是直接调用的Vector方法的实现
-          ```
 
           源码分析：[Stack](Java/Java源码阅读/集合类/Stack.md)
         </details>
@@ -172,11 +229,7 @@
       - <details><summary>TreeMap</summary>
   
           #### 介绍
-          ```
-          TreeMap能够以有序的顺序遍历，如果不传入一个Compartor则在比较时强转key为Comparable，不保证线程安全
-          底层使用的红黑树，TreeMap提供了多种遍历方式，如descendingKeySet：从后往前遍历，navigableKeySet：从前往后遍历等
-          TreeMap实现了NavigableMap接口，该接口在SortedMap接口的基础上定义了更丰富的访问可排序map的方法
-          ```
+          TreeMap能够以有序的顺序遍历，如果不传入一个Compartor则在比较时强转key为Comparable，不保证线程安全底层使用的红黑树，TreeMap提供了多种遍历方式，如descendingKeySet：从后往前遍历，navigableKeySet：从前往后遍历等TreeMap实现了NavigableMap接口，该接口在SortedMap接口的基础上定义了更丰富的访问可排序map的方法
 
           源码分析：[TreeMap](Java/Java源码阅读/集合类/TreeMap.md)
         </details>
@@ -184,17 +237,15 @@
       - <details><summary>TreeSet</summary>
   
           #### 介绍
-          ```
           TreeSet底层用的是TreeMap，功能都是直接调用TreeMap的方法，和HashMap与HashSet的关系一样
-          ```
+
         </details>
 
       - <details><summary>WeakHashMap</summary>
   
           #### 介绍
-          ```
           和JDK7的HashMap差不多，底层是数组，数组元素是单链表，关键在于WeakHashMap的Entry继承WeakReference，Entry的构造函数中设置了key作为WeakReference的引用对象：
-
+          ```
           // 构造函数传入引用队列，当key被回收时entry会被加入引用队列
           Entry(Object key, V value,
                 ReferenceQueue<Object> queue,
@@ -204,11 +255,10 @@
               this.hash  = hash;
               this.next  = next;
           }
+          ```
 
-          在getTable、size、get和getEntry（间接调用getTable方法）、put等方法被调用时WeakHashMap会执行expungeStaleEntries方法，该方法获取引用队列中所有的Entry，这些Entry就是key已经被GC回收的Entry，expungeStaleEntries方法设置这些Entry的value为空并从map中删除这些Entry，从而实现了key被回收时回收Entry，达到了WeakHashMap想要达到的功能，WeakHashMap不是线程安全的
-
-          下面是个使用场景：
-
+          在getTable、size、get和getEntry（间接调用getTable方法）、put等方法被调用时WeakHashMap会执行expungeStaleEntries方法，该方法获取引用队列中所有的Entry，这些Entry就是key已经被GC回收的Entry，expungeStaleEntries方法设置这些Entry的value为空并从map中删除这些Entry，从而实现了key被回收时回收Entry，达到了WeakHashMap想要达到的功能，WeakHashMap不是线程安全的。下面是个使用场景：
+          ```
           package dhf;
 
           import java.util.Map;
@@ -252,10 +302,11 @@
                   this.eden.put(k, v);
               }
           }
-          
-          上面的代码有eden和longterm的两个map，做了分代的缓存。在put方法里，在插入一个k-v时，先检查eden缓存的容量是不是超了。没有超就直接放入eden缓存，如果超了则锁定longterm将eden中所有的k-v都放入longterm。再将eden清空并插入k-v。在get方法中，也是优先从eden中找对应的v，如果没有则进入longterm缓存中查找，找到后就加入eden缓存并返回。 
-          经过这样的设计，相对常用的对象都能在eden缓存中找到，不常用（有可能被销毁的对象）的则进入longterm缓存。而longterm的key的实际对象没有其他引用指向它时，gc就会自动回收heap中该弱引用指向的实际对象，弱引用进入引用队列。longterm在调用put、get等方法时会调用expungeStaleEntries()方法，遍历引用队列中的弱引用，并清除对应的Entry，不会造成内存空间的浪费。
           ```
+
+          上面的代码有eden和longterm的两个map，做了分代的缓存。在put方法里，在插入一个k-v时，先检查eden缓存的容量是不是超了。没有超就直接放入eden缓存，如果超了则锁定longterm将eden中所有的k-v都放入longterm。再将eden清空并插入k-v。在get方法中，也是优先从eden中找对应的v，如果没有则进入longterm缓存中查找，找到后就加入eden缓存并返回。 
+
+          经过这样的设计，相对常用的对象都能在eden缓存中找到，不常用（有可能被销毁的对象）的则进入longterm缓存。而longterm的key的实际对象没有其他引用指向它时，gc就会自动回收heap中该弱引用指向的实际对象，弱引用进入引用队列。longterm在调用put、get等方法时会调用expungeStaleEntries()方法，遍历引用队列中的弱引用，并清除对应的Entry，不会造成内存空间的浪费。
 
           源码分析：[WeakHashMap](Java/Java源码阅读/集合类/WeakHashMap.md)
         </details>
@@ -3257,24 +3308,76 @@
     - <details><summary>MVC</summary>
        
       #### MVC介绍
-      ```
       MVC分别是：
-      视图（View）：完成数据到视图的渲染显示逻辑。
-      控制器（Controller）：连接View和Model，用于控制应用程序的流程，响应用户对View的操作，调用Model的接口对数据进行操作并在Model变化后通知视图进行更新
-      模型（Model）：封装业务逻辑相关的数据及这些数据的处理方法
+      1. 视图（View）：完成数据到视图的渲染显示逻辑。
+      2. 控制器（Controller）：连接View和Model，用于控制应用程序的流程，响应用户对View的操作，调用Model的接口对数据进行操作并在Model变化后通知视图进行更新
+      3. 模型（Model）：封装业务逻辑相关的数据及这些数据的处理方法
 
       通信方式：
-      View传送指令到Controller
-      Controller要求Model改变状态，并在Model改变之后通知视图进行更新
-      Model将新的数据发送到View，用户得到反馈，获取可以理解为View从Model获取新的数据再进行展示
+      1. View传送指令到Controller
+      2. Controller要求Model改变状态，并在Model改变之后通知视图进行更新
+      3. Model将新的数据发送到View，用户得到反馈，获取可以理解为View从Model获取新的数据再进行展示
 
       MVC优点：
-      耦合性低
+      1. 耦合性低
 
       MVC的缺点：
-      View和Controller一般是一一对应的，捆绑起来表示一个组件，视图与控制器间的过于紧密的连接让Controller的复用性成了问题
-      View的数据完全来自Model，Model难以符合复杂多变的View端变化，也就是Model也是难以复用的
+      1. View和Controller一般是一一对应的，捆绑起来表示一个组件，视图与控制器间的过于紧密的连接让Controller的复用性成了问题
+      2. View的数据完全来自Model，Model难以符合复杂多变的View端变化，也就是Model也是难以复用的
+
+      MVC中的数据通常用一个POJO表示，如果UserEntity、UserBo、UserVo等，这些对象只包含数据不包含操作，对于这种编程方式，在设计模式中称为“贫血模式”，这种贫血模型将数据与操作分离，破坏了面向对象的封装特性（面向对象中的封装通常指将类的数据和操作封装在类中，而不要分散在多个类），是一种典型的面向过程的编程风格，如：
+      ```java
+      ////////// Controller+VO(View Object) //////////
+      public class UserController {
+        private UserService userService; //通过构造函数或者IOC框架注入
+
+        public UserVo getUserById(Long userId) {
+          UserBo userBo = userService.getUserById(userId);
+          UserVo userVo = [...convert userBo to userVo...];
+          return userVo;
+        }
+      }
+
+      public class UserVo {//省略其他属性、get/set/construct方法
+        private Long id;
+        private String name;
+        private String cellphone;
+      }
+
+      ////////// Service+BO(Business Object) //////////
+      public class UserService {
+        private UserRepository userRepository; //通过构造函数或者IOC框架注入
+
+        public UserBo getUserById(Long userId) {
+          UserEntity userEntity = userRepository.getUserById(userId);
+          UserBo userBo = [...convert userEntity to userBo...];
+          return userBo;
+        }
+      }
+
+      public class UserBo {//省略其他属性、get/set/construct方法
+        private Long id;
+        private String name;
+        private String cellphone;
+      }
+
+      ////////// Repository+Entity //////////
+      public class UserRepository {
+        public UserEntity getUserById(Long userId) { //... }
+      }
+
+      public class UserEntity {//省略其他属性、get/set/construct方法
+        private Long id;
+        private String name;
+        private String cellphone;
+      }
       ```
+
+      相对应的，有一种“充血模式”的编程方式，基于充血模型的MVC架构中，Controller层还是负责暴露接口，Repository层还是负责数据存取，Service层负责核心业务逻辑。它跟基于贫血模型的传统开发模式的区别主要在Service层。
+
+      在基于贫血模型的传统开发模式中，Service层包含Service类和BO类两部分，BO是贫血模型，只包含数据，不包含具体的业务逻辑。业务逻辑集中在Service类中。在充血模型中，Service层包含Service类和Domain类两部分。Domain就相当于贫血模型中的BO。不过，Domain与BO的区别在于它是基于充血模型开发的，既包含数据，也包含业务逻辑。而Service类变得非常单薄。总结一下的话就是，基于贫血模型的传统的开发模式，重Service轻BO；基于充血模型的DDD开发模式，轻Service重Domain。
+
+      但是贫血模式已经深入人心，而且正常情况下MVC架构中的Service逻辑并不复杂，并且充血模式开发起来需要考虑到很多的设计，所以大部分情况下用贫血模式就够了。
       </details>
 
     - <details><summary>MVP</summary>
