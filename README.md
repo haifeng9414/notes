@@ -579,6 +579,210 @@
           [Semaphore](Java/Java源码阅读/并发类/Semaphore.md)
       </details>
 
+- JAVA相关
+  - <details><summary>synchronized原理</summary>
+
+    synchronized依赖于JVM来实现同步，同步方法和同步代码块的原理有点区别
+
+    ## 同步代码块
+    在代码块加上synchronized关键字：
+    ```
+    public void synSay() {
+        synchronized (object) {
+            System.out.println("synSay----" + Thread.currentThread().getName());
+        }
+    }
+    ```
+    编译之后，利用反编译命令javap -v xxx.class查看对应的字节码，这里只粘贴对应的方法的字节码：
+    ```
+    public void synSay();
+    descriptor: ()V
+    flags: ACC_PUBLIC
+    Code:
+      stack=3, locals=3, args_size=1
+         0: aload_0
+         1: getfield      #2                  // Field object:Ljava/lang/String;
+         4: dup
+         5: astore_1
+         6: monitorenter
+         7: getstatic     #3                  // Field java/lang/System.out:Ljava/io/PrintStream;
+        10: new           #4                  // class java/lang/StringBuilder
+        13: dup
+        14: invokespecial #5                  // Method java/lang/StringBuilder."<init>":()V
+        17: ldc           #6                  // String synSay----
+        19: invokevirtual #7                  // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        22: invokestatic  #8                  // Method java/lang/Thread.currentThread:()Ljava/lang/Thread;
+        25: invokevirtual #9                  // Method java/lang/Thread.getName:()Ljava/lang/String;
+        28: invokevirtual #7                  // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        31: invokevirtual #10                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+        34: invokevirtual #11                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        37: aload_1
+        38: monitorexit
+        39: goto          47
+        42: astore_2
+        43: aload_1
+        44: monitorexit
+        45: aload_2
+        46: athrow
+        47: return
+      Exception table:
+         from    to  target type
+             7    39    42   any
+            42    45    42   any
+      LineNumberTable:
+        line 21: 0
+        line 22: 7
+        line 23: 37
+        line 24: 47
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      48     0  this   Lcn/T1;
+      StackMapTable: number_of_entries = 2
+        frame_type = 255 /* full_frame */
+          offset_delta = 42
+          locals = [ class cn/T1, class java/lang/Object ]
+          stack = [ class java/lang/Throwable ]
+        frame_type = 250 /* chop */
+          offset_delta = 4
+    ```
+    可以发现synchronized同步代码块是通过加monitorenter和monitorexit指令实现的。
+
+    每个对象都有个监视器锁（monitor），当monitor被占用的时候就代表对象处于锁定状态，而monitorenter指令的作用就是获取monitor的所有权，monitorexit的作用是释放monitor的所有权，这两者的工作流程如下：
+    - monitorenter：
+      1. 如果monitor的进入数为0，则线程进入到monitor，然后将进入数设置为1，该线程称为monitor的所有者。
+      2. 如果是线程已经拥有此monitor，然后该线程又重新进入monitor，则将monitor的进入数+1，这个即为锁的重入。
+      3. 如果其他线程已经占用了monitor，则该线程进入到阻塞状态，直到monitor的进入数为0，该线程再去重新尝试获取monitor的所有权。
+    - monitorexit：执行该指令的线程必须是monitor的所有者，指令执行时，monitor进入数-1，如果-1后进入数为0，那么线程退出monitor，不再是这个monitor的所有者。这个时候其它阻塞的线程可以尝试获取monitor的所有权。 
+
+    ## 同步方法
+    在方法上加上synchronized关键字：
+    ```
+    synchronized public void synSay() {
+        System.out.println("synSay----" + Thread.currentThread().getName());
+    }
+    ```
+    利用反编译命令javap -v xxx.class查看对应的字节码，只粘贴对应的方法的字节码：
+    ```
+    public synchronized void synSay();
+    descriptor: ()V
+    flags: ACC_PUBLIC, ACC_SYNCHRONIZED
+    Code:
+      stack=3, locals=1, args_size=1
+         0: getstatic     #2                  // Field java/lang/System.out:Ljava/io/PrintStream;
+         3: new           #3                  // class java/lang/StringBuilder
+         6: dup
+         7: invokespecial #4                  // Method java/lang/StringBuilder."<init>":()V
+        10: ldc           #5                  // String synSay----
+        12: invokevirtual #6                  // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        15: invokestatic  #7                  // Method java/lang/Thread.currentThread:()Ljava/lang/Thread;
+        18: invokevirtual #8                  // Method java/lang/Thread.getName:()Ljava/lang/String;
+        21: invokevirtual #6                  // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        24: invokevirtual #9                  // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+        27: invokevirtual #10                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        30: return
+      LineNumberTable:
+        line 20: 0
+        line 21: 30
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      31     0  this   Lcn/T1;
+    ```
+    从字节码上看，加有synchronized关键字的方法，常量池中比普通的方法多了个ACC_SYNCHRONIZED标识，JVM就是根据这个标识来实现方法的同步。
+
+    当调用方法的时候，调用指令会检查方法是否有ACC_SYNCHRONIZED标识，有的话线程需要先获取monitor，获取成功才能继续执行方法，方法执行完毕之后，线程再释放monitor，同一个monitor同一时刻只能被一个线程拥有。
+
+    ## 两种同步方式区别
+    synchronized同步代码块的时候通过加入字节码monitorenter和monitorexit指令来实现monitor的获取和释放，也就是需要JVM通过字节码显式的去获取和释放monitor实现同步，而synchronized同步方法的时候，没有使用这两个指令，而是检查方法的ACC_SYNCHRONIZED标志是否被设置，如果设置了则线程需要先去获取monitor，执行完毕了线程再释放monitor，也就是不需要JVM去显式的实现。
+
+    这两个同步方式实际都是通过获取monitor和释放monitor来实现同步的，而monitor的实现依赖于底层操作系统的mutex互斥原语，而操作系统实现线程之间的切换的时候需要从用户态转到内核态，这个转成过程开销比较大。
+
+    线程获取、释放monitor的过程如下：
+    
+    ![sychronizedMutex](resources/sychronizedMutex.png)
+
+    线程尝试获取monitor的所有权，如果获取失败说明monitor被其他线程占用，则将线程加入到的同步队列中，等待其他线程释放monitor，当其他线程释放monitor后，有可能刚好有线程来获取monitor的所有权，那么系统会将monitor的所有权给这个线程，而不会去唤醒同步队列的第一个节点去获取，所以synchronized是**非公平锁**。如果线程获取monitor成功则进入到monitor中，并且将其进入数+1。
+
+    对象的wait、notify、notifyAll方法也是通过monitor实现的，下面是一个monitor的几个关键属性：
+    ```
+    _owner：指向持有ObjectMonitor对象的线程
+    _WaitSet：存放处于wait状态的线程
+    _EntryList：存放等待锁的线程
+    _recursions：锁的重入次数
+    ```
+    当某个线程获取到对象的monitor后把monitor中的_owner变量设置为当前线程，同时增加重入次数。如果锁被别的线程持有则当前线程会进入_EntryList队列中等待。
+
+    若持有monitor的线程调用wait方法，则会释放当前持有的monitor，同时该线程进入_WaitSet集合中等待被唤醒。当另一个获的了锁的线程调用notify或notifyAll方法唤醒wait的线程时，会将_WaitSet集合中的一个或全部线程放到_EntryList集合使其参与锁竞争。
+    </details> 
+  
+  - <details><summary>锁优化</summary>
+
+    在JVM中monitorenter和monitorexit字节码依赖于底层的操作系统的Mutex Lock来实现的，但是由于使用Mutex Lock需要将当前线程挂起并从用户态切换到内核态来执行，这种切换的代价是非常昂贵的。然而，在现实中的大部分情况下，同步方法是运行在单线程环境（无锁竞争环境），如果每次都调用Mutex Lock 那么将严重的影响程序的性能。
+
+    因此，JDK 1.6对锁的实现引入了大量的优化，如自旋锁、适应性自旋锁、锁消除、锁粗化、偏向锁、轻量级锁等技术来减少锁操作的开销。
+
+    ### 自旋锁
+    线程的阻塞和唤醒，需要CPU从用户态转为核心态。频繁的阻塞和唤醒对CPU来说是一件负担很重的工作，势必会给系统的并发性能带来很大的压力。同时，我们发现在许多应用上面，对象锁的锁状态只会持续很短一段时间。为了这一段很短的时间，频繁地阻塞和唤醒线程是非常不值得的。所以引入自旋锁。
+
+    所谓自旋锁，就是让该线程等待一段时间，不会被立即挂起，看持有锁的线程是否会很快释放锁。
+
+    在JDK1.6中默认开启自旋锁。同时自旋的默认次数为10次，可以通过参数-XX:PreBlockSpin来调整。参数-XX:PreBlockSpin的值很难确定。假如将参数调整为10，可能经常出现自旋等待次数到达后刚被挂了，拥有锁的线程释放了锁，为了避免这种情况，JDK 1.6引入自适应的自旋锁，让虚拟机会变得越来越聪明。
+
+    ### 自适应锁
+    所谓自适应就意味着自旋的次数不再是固定的，它是由前一次在同一个锁上的自旋时间及锁的拥有者的状态来决定。
+
+    线程如果自旋成功了，那么下次自旋的次数会更加多，因为虚拟机认为既然上次成功了，那么此次自旋也很有可能会再次成功，那么它就会允许自旋等待持续的次数更多。
+
+    反之，如果对于某个锁，很少有自旋能够成功的，那么这个锁的时候自旋的次数会减少甚至省略掉自旋过程，以免浪费处理器资源。
+    
+    有了自适应自旋锁，随着程序运行和性能监控信息的不断完善，虚拟机对程序锁的状况预测会越来越准确，虚拟机会变得越来越聪明。
+
+    ### 锁消除
+    为了保证数据的完整性，在进行操作时需要对部分操作进行同步控制。但是，在有些情况下，JVM检测到不可能存在共享数据竞争，这是JVM会对这些同步锁进行锁消除。锁消除可以节省毫无意义的请求锁的时间。
+
+    锁消除的依据是逃逸分析的数据支持。变量是否逃逸，对于虚拟机来说需要使用数据流分析来确定。在使用一些JDK的内置API时，如StringBuffer、Vector、HashTable等，会存在隐性的加锁操作。比如StringBuffer的append()方法，Vector的add()方法。JVM通过逃逸分析可以检测出变量是否会逃逸到方法之外，如果不会，JVM就可以大胆地将vector内部的加锁操作消除。
+
+    ### 锁粗化
+    锁粗话概念比较好理解，就是将多个连续的加锁、解锁操作连接在一起，扩展成一个范围更大的锁。如将for循环内部的加锁语句放到for循环外部。
+
+    ### 锁升级
+    锁存在四种状态，依次是：无锁状态、偏向锁状态、轻量级锁状态、重量级锁状态。它们会随着竞争的激烈而逐渐升级。注意，锁可以升级不可降级。
+
+    JDK 1.6中默认是开启偏向锁和轻量级锁的，可以通过-XX:-UseBiasedLocking来禁用偏向锁。锁的状态保存在对象头：
+
+    ![objectHeader](resources/objectHeader.png)
+
+    #### 重量级锁
+    通过对象内部的监视器（monitor）实现，本质是依赖于底层操作系统的Mutex Lock实现。需要从用户态到内核态的切换，切换成本非常高。
+    
+    #### 轻量级锁
+    轻量级锁的主要目的，是在没有多线程竞争的前提下，减少传统的重量级锁使用操作系统互斥量产生的性能消耗。
+
+    当关闭偏向锁功能或者多个线程竞争偏向锁，导致偏向锁升级为轻量级锁，则会尝试获取轻量级锁，其步骤如下：
+    1. 如果同步对象锁状态为无锁状态（锁标志位为“01”状态，是否为偏向锁位为“0”），虚拟机首先将在当前线程的栈帧中建立一个名为锁记录（Lock Record）的空间，用于存储锁对象目前的Mark Word的拷贝，官方称之为Displaced Mark Word。
+    2. 拷贝对象头中的Mark Word复制到锁记录中。
+    3. 拷贝成功后，虚拟机将使用CAS操作尝试将对象的Mark Word更新为指向Lock Record的指针，并将Lock record里的owner指针指向object mark word。如果更新成功，则执行步骤3，否则执行步骤4。
+    4. 如果这个更新动作成功了，那么这个线程就拥有了该对象的锁，并且对象Mark Word的锁标志位设置为“00”，即表示此对象处于轻量级锁定状态。
+    5. 如果这个更新操作失败了，虚拟机首先会检查对象的Mark Word是否指向当前线程的栈帧，如果是就说明当前线程已经拥有了这个对象的锁，那就可以直接进入同步块继续执行。否则说明多个线程竞争锁，轻量级锁就要膨胀为重量级锁，锁标志的状态值变为“10”，Mark Word中存储的就是指向重量级锁（互斥量）的指针，也就是锁已经膨胀了，进入重量级锁的状态，后面等待锁的线程也要进入阻塞状态。而当前线程便尝试使用自旋来获取锁，自旋一段时间后也会阻塞。
+
+    释放步骤如下：
+    1. 通过CAS操作尝试把线程中复制的Displaced Mark Word对象替换当前的Mark Word。
+    2. 如果替换成功，整个同步过程就完成了。
+    3. 如果替换失败，说明有其他线程尝试过获取该锁（此时锁已膨胀），那就要在释放锁的同时，唤醒被挂起的线程。
+
+    #### 偏向锁
+    引入偏向锁是为了尽量减少不必要的轻量级锁执行路径，因为轻量级锁的获取及释放依赖多次CAS原子指令，而偏向锁只需要在置换ThreadID的时候依赖一次CAS原子指令（由于一旦出现多线程竞争的情况就必须撤销偏向锁，所以偏向锁的撤销操作的性能损耗必须小于节省下来的CAS原子指令的性能消耗）。上面说过，轻量级锁是为了在线程交替执行同步块时提高性能，而偏向锁则是在只有一个线程执行同步块时进一步提高性能。
+
+    偏向锁获取过程：
+    1. 访问Mark Word中偏向锁的标识是否为1，锁标志位是否为01，是则为可偏向状态。
+    2. 如果为可偏向状态，则测试线程ID是否指向当前线程，如果是，进入步骤5，否则进入步骤3。
+    3. 如果线程ID并未指向当前线程，则通过CAS操作竞争锁。如果竞争成功，则将Mark Word中线程ID设置为当前线程ID，然后执行步骤5；如果竞争失败，执行步骤4。
+    4. 如果CAS获取偏向锁失败，则表示有竞争。当到达全局安全点（safepoint）时获得偏向锁的线程被挂起，偏向锁升级为轻量级锁，然后被阻塞在安全点的线程继续往下执行同步代码。
+    5. 执行同步代码。
+
+    偏向锁的释放：偏向锁的撤销在上述第4步中有提到。偏向锁只有遇到其他线程尝试竞争偏向锁时，持有偏向锁的线程才会释放锁，线程不会主动去释放偏向锁。偏向锁的撤销，需要等待全局安全点（在这个时间点上没有字节码正在执行），它会首先暂停拥有偏向锁的线程，判断锁对象是否处于被锁定状态，撤销偏向锁后恢复到未锁定（标志位为“01”）或轻量级锁（标志位为“00”）的状态。
+
+    </details>
+
 - 微服务
   - Spring Cloud
     - <details><summary>简介</summary>
