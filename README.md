@@ -636,7 +636,7 @@
 
       #### 介绍
       ```
-      看Spring源码时碰到的设计模式，由于Spring源码总结是很久之前写的，所以这里只能想到啥写啥
+      看Spring源码时碰到的设计模式，由于Spring源码总结是很久之前写的，所以这里只能想到啥写啥，以后有啥想到的再补充
       ``` 
 
       #### 建造者模式
@@ -3075,6 +3075,97 @@
     </details>
 
 - 其他
+  - <details><summary>IO相关</summary>
+
+    - <details><summary>select、poll、epoll</summary>
+
+      ## 简单介绍
+      实现nio需要操作系统的支持，linux中一般有3中实现方式：select、poll、epoll
+
+      select、poll和epoll都能完成1个线程处理所有连接的“等待消息准备好”事件，但是select的实现存在缺陷：
+      1. 每次调用select方法，都需要把fd集合从用户态拷贝到内核态，这个开销在fd很多时会很大
+      2. 每次调用select方法，都需要在内核遍历传递进来的所有fd寻找准备好的fd，这个开销在fd很多时也很大
+      3. linux中select的实现方式限制了fd个数，最多1024个
+
+      poll的实现和select区别不大，只是取消了1024的限制
+
+      epoll既然是对select和poll的改进，就应该能避免上述的三个缺点。那epoll都是怎么解决的呢？select和poll都只提供了一个函数：select或者poll函数。而epoll提供了三个函数，epoll_create、epoll_ctl和epoll_wait，epoll_create是创建一个epoll句柄；epoll_ctl是注册要监听的事件类型；epoll_wait则是等待事件的产生
+      - 对于第一个缺点，epoll的解决方案在epoll_ctl函数中。每次注册新的事件到epoll句柄中时（如在epoll_ctl中指定EPOLL_CTL_ADD），会把fd拷贝进内核，而不是在epoll_wait的时候重复拷贝。epoll保证了每个fd在整个过程中只会拷贝一次
+      - 对于第二个缺点，epoll的解决方案是为每个fd指定一个回调函数，当设备就绪，唤醒等待队列上的等待者时，就会调用这个回调函数，而这个回调函数会把就绪的fd加入一个就绪链表。epoll_wait的工作实际上就是在这个就绪链表中查看有没有就绪的fd（利用schedule_timeout()实现睡一会，判断一会的效果）
+      - 对于第三个缺点，epoll没有这个限制，它所支持的FD上限是最大可以打开文件的数目
+
+      总结：
+      select，poll实现需要不断轮询所有fd集合，直到设备就绪，期间可能要睡眠和唤醒多次交替。而epoll其实也需要调用epoll_wait不断轮询就绪链表，期间也可能多次睡眠和唤醒交替，但是它是设备就绪时，调用回调函数，把就绪fd放入就绪链表中，并唤醒在epoll_wait中进入睡眠的进程。虽然都要睡眠和交替，但是select和poll在“醒着”的时候要遍历整个fd集合，而epoll在“醒着”的时候只要判断一下就绪链表是否为空就行了，这节省了大量的CPU时间。这就是回调机制带来的性能提升。
+
+      select，poll每次调用都要把fd集合从用户态往内核态拷贝一次，而epoll只要一次拷贝，这也能节省不少的开销。
+
+      </details>
+    
+    - <details><summary>零拷贝</summary>
+
+      ## 传统方法
+      从一个文件中读出数据并将数据传输到网络上另一程序调用方式如下：
+      ```
+      File.read(fileDesc, buf, len);
+      Socket.send(socket, buf, len);
+      ```
+      上面的操作需要四次用户模式和内核模式间的上下文切换，而且在操作完成前数据被复制了四次
+      
+      传统的数据拷贝方法：
+
+      ![TraditionIOCopy](resources/TraditionIOCopy.gif)
+
+      传统上下文切换：
+
+      ![TraditionIOSwitch](resources/TraditionIOSwitch.gif)
+
+      这里涉及的步骤有：
+      1. read()调用引发了一次从用户模式到内核模式的上下文切换。在内部，发出sys_read()（或等效内容）以从文件中读取数据。直接内存存取（direct memory access，DMA）引擎执行了第一次拷贝，它从磁盘中读取文件内容，然后将它们存储到一个内核地址空间缓存区中。
+      2. 所需的数据被从读取缓冲区拷贝到用户缓冲区，read()调用返回。该调用的返回引发了内核模式到用户模式的上下文切换（又一次上下文切换）。现在数据被储存在用户地址空间缓冲区。
+      3. send()套接字调用引发了从用户模式到内核模式的上下文切换。数据被第三次拷贝，并被再次放置在内核地址空间缓冲区。但是这一次放置的缓冲区不同，该缓冲区与目标套接字相关联。
+      4. send()系统调用返回，结果导致了第四次的上下文切换。DMA引擎将数据从内核缓冲区传到协议引擎，第四次拷贝独立地、异步地发生。
+
+      使用内核缓冲区（而不是直接将数据传输到用户缓冲区）看起来可能有点效率低下，但是之所以引入中间内核缓冲区的目的是想提高性能。在读取方面使用内核缓冲区，可以允许内核缓冲区在应用程序不需要内核缓冲区内的全部数据时，充当“预读高速缓存（readahead cache）”的角色。这在所需数据量小于内核缓冲区大小时极大地提高了性能。在写入方面的中间缓冲区则可以让写入过程异步完成。
+
+      不幸的是，如果所需数据量远大于内核缓冲区大小的话，这个方法本身可能成为一个性能瓶颈。数据在被最终传入到应用程序前，在磁盘、内核缓冲区和用户缓冲区中被拷贝了多次。零拷贝通过消除这些冗余的数据拷贝而提高了性能。
+
+      ## 零拷贝方法
+      检查传统方法，就会注意到第二次和第三次拷贝根本就是多余的。应用程序只是起到缓存数据并将其传回到套接字的作用而以，别无他用。数据可以直接从读取缓冲区传输到套接字缓冲区。`transferTo()`方法就能够实现这个操作：
+      ```
+      public void transferTo(long position, long count, WritableByteChannel target);
+      ```
+      transferTo()方法将数据从文件通道传输到了给定的可写字节通道。在内部，它依赖底层操作系统对零拷贝的支持；在UNIX和各种Linux系统中，此调用被传递到sendfile()系统调用中：
+      ```
+      #include <sys/socket.h>
+      ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
+      ```
+
+      传统方法中的`file.read()`和`socket.send()`调用动作可以替换为一个单一的`transferTo()`调用。
+
+      使用transferTo()方法的数据拷贝：
+
+      ![ZeroIOCopy](resources/ZeroIOCopy.gif)
+
+      使用transferTo()方法时的上下文切换：
+
+      ![ZeroIOSwitch](resources/ZeroIOSwitch.gif)
+
+      `transferTo()`方法时的步骤有：
+      1. transferTo()方法引发DMA引擎将文件内容拷贝到一个读取缓冲区。然后由内核将数据拷贝到与输出套接字相关联的内核缓冲区。
+      2. 数据的第三次复制发生在DMA引擎将数据从内核套接字缓冲区传到协议引擎。
+
+      改进的地方：将上下文切换的次数从四次减少到了两次，将数据复制的次数从四次减少到了三次（其中只有一次涉及到了CPU）。但是这个代码尚未达到零拷贝要求。如果底层网络接口卡支持收集操作的话，那么就可以进一步减少内核的数据复制。在Linux内核2.4及后期版本中，套接字缓冲区描述符就做了相应调整，以满足该需求。这种方法不仅可以减少多个上下文切换，还可以消除需要涉及CPU的重复的数据拷贝。对于用户方面，用法还是一样的，但是内部操作已经发生了改变：
+      1. transferTo()方法引发DMA引擎将文件内容拷贝到内核缓冲区。
+      2. 数据未被拷贝到套接字缓冲区。取而代之的是，只有包含关于数据的位置和长度的信息的描述符被追加到了套接字缓冲区。DMA引擎直接把数据从内核缓冲区传输到协议引擎，从而消除了剩下的最后一次CPU 拷贝。
+
+      使用transferTo()和收集操作时的数据拷贝：
+      
+      ![ZeroIOCopy2](resources/ZeroIOCopy2.gif)
+
+      </details>
+
+    </details>
+
   - <details><summary>如何实现接口幂等</summary>
 
     #### 全局唯一ID
@@ -3139,7 +3230,8 @@
 
       </details>
 
-  - 高并发场景
+  - <details><summary>高并发场景</summary>
+   
     - <details><summary>秒杀系统设计</summary>
 
       #### 系统隔离
@@ -3303,8 +3395,10 @@
 
 
       </details>
+    </details>
   
-  - MVC、MVP和MVVM
+  - <details><summary>MVC、MVP和MVVM</summary>
+   
     - <details><summary>MVC</summary>
        
       #### MVC介绍
@@ -3399,3 +3493,4 @@
       MVVM模式没有了Presenter，取而代之的是ViewModel（Model of View），MVVM中的Model只负责保存数据，View只负责展示数据，ViewModel负责将View的变化更新到Model，同时负责将Model的变化更新到View，也就是实现了双向绑定，类似AngularJs，使得开发人员只需要关注Model的变化，让MVVM框架去自动更新View（对于前端页面来说就是DOM）状态，从而把开发者从操作View更新的繁琐步骤中解脱出来
       ```
       </details>
+    </details>
