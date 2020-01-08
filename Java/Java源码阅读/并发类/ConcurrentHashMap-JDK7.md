@@ -3,7 +3,7 @@
 注意点：
 get、clear方法没有加锁，直接遍历所有的Segment，所以是弱一致的
 isEmpty方法中没有加锁，采用的是循环一次判断是否存在非空Segment，如果都为空则记住modCount，再循环一次，如果再次为空并且两次modCount相等，则返回true
-size方法也是循环多次（默认两次）计算modCount是否相等，不想等并超出循环次数则获取Segment锁并再次计算size
+size方法也是循环多次（默认两次）计算modCount是否相等，不相等并超出循环次数则获取Segment锁并再次计算size
 containsValue的思路和size是一样的
 构造函数结束后Segment数组只初始化了第一个成员，后续的成员在用到时才初始化，初始化时用casSegment数组元素实现不加锁初始化
 

@@ -1,4 +1,4 @@
-HashMap可以接受null键值和值，但空键只有一个，且放在table[0]，HashTable不行元素是无序的，而且顺序会不定时改变插入、获取的时间复杂度基本是 O(1)（前提是有适当的哈希函数，让元素分布在均匀的位置）线程不安全，HashTable是线程安全的，HashMap可以如下实现同步：Map m = Collections.synchronizeMap(hashMap); 
+HashMap可以接受null键值和值，但空键只有一个，且放在table[0]，HashTable不行。HashMap是线程不安全，HashTable是线程安全的，HashMap可以如下实现线程安全：Map m = Collections.synchronizeMap(hashMap); 
 
 注意key的hashCode在存入map中后变了，则get时将无法返回原来的值，可能返回null或刚好返回其他的变化后的hashCode对应的值，所以最好用不可变的类做为key如String、Integer包装类
 

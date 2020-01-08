@@ -666,6 +666,8 @@ public class WeakHashMap<K,V>
      * field as the key.
      */
     private static class Entry<K,V> extends WeakReference<Object> implements Map.Entry<K,V> {
+        // 只有value的引用没有key的引用，因为key需要作为弱引用，如果Entry对象存在key的引用，弱引用是不起作用的，
+        // 因为存在Entry对象对key的强引用
         V value;
         final int hash;
         Entry<K,V> next;
@@ -677,6 +679,14 @@ public class WeakHashMap<K,V>
         Entry(Object key, V value,
               ReferenceQueue<Object> queue,
               int hash, Entry<K,V> next) {
+            /*
+            正常情况下一个ReferenceQueue的用法是：
+            WeakReference<byte[]> weakReference = new WeakReference<>(bytes, referenceQueue)
+
+            上面的语句效果是，当bytes没回收后，weakReference的引用会被添加到referenceQueue中，所以Entry类也
+            是一个道理，下面super(key, queue)的效果和WeakReference<Object> entry = new Entry<>(key, referenceQueue)
+            效果一样，所以当key被回收时，entry的引用会被添加到referenceQueue
+            */
             super(key, queue);
             this.value = value;
             this.hash  = hash;
