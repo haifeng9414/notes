@@ -224,7 +224,7 @@ UDP。
 11. 上面的各个环节都有发送消息的步骤，略
 
 #### client-go
-首先有个基础队列，用lock保证了线程安全，该队列有几个重要属性，数组queue、集合dirty和集合processing，添加新元素是先判断元素是否在dirty中，在则直接返回，繁殖同一个对象重复入队，否则将元素加到dirty，判断元素是否在processing中，在则直接返回，否则入队到queue
+首先有个基础队列，用lock保证了线程安全，该队列有几个重要属性，数组queue、集合dirty和集合processing，添加新元素时先判断元素是否在dirty中，在则直接返回，防止同一个对象重复入队，否则将元素加到dirty，判断元素是否在processing中，在则直接返回，否则入队到queue
 获取元素是，如果queue为空，wait，否则取出队列的第一个元素，添加到processing中，删除dirty中该元素，以便能再次添加元素到dirty
 当元素处理完成后需要调用done方法，该方法删除processing中的该元素，如果dirty中存在该元素，添加到queue中，这就实现了同一个对象只能从队列中被获取一次，再次入队会被缓存到dirty中
 

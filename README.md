@@ -1553,7 +1553,7 @@
       #### 慢启动
       滑动窗口能够让协议栈同时发送多个报文段，这样可以提高网络通信的效率，对于一些处理能力不佳的中间路由器，很可能会导致存储被耗尽的状况，从而严重降低了TCP连接的吞吐量，不断的重传，非常的可怕，介于此，引入了慢启动这个算法。
 
-      慢启动为发送方的TCP增加了一个窗口：拥塞窗口，记为cwnd，初始化之后慢慢增加这个cwnd的值来提升速度。同时也引入了ssthresh阈值（默认为65535字节），如果cwnd达到这个值会让cwnd的增长变得平滑，算法如下：
+      慢启动为发送方的TCP增加了一个窗口：拥塞窗口，记为cwnd，初始化之后慢慢增加这个cwnd的值来提升速度。同时也引入了ssthresh阈值（slow start thresh，慢启动阈值，默认为65535字节），如果cwnd达到这个值会让cwnd的增长变得平滑，算法如下：
       1. 连接建好的开始先初始化cwnd = 1，表明可以传一个MSS大小的数据，发送方发出的报文段长度不能超过cwnd和发送窗口
       2. 每当收到一个ACK，cwnd++，呈线性上升，这使得每当过了一个RTT，cwnd = cwnd * 2; 呈指数上升，因为不考虑窗口大小的情况下，一个RTT理论上发送cwnd个字节，每个字节的ACK使cwnd + 1，所以一个RTT后cwnd翻倍
       3. 当cwnd >= ssthresh或发送超时或收到重复的ACK时，就会进入“拥塞避免算法”
@@ -1565,16 +1565,25 @@
 
       ![拥塞避免](resources/拥塞避免.jpeg)
 
-      #### 快速恢复和快速重传
-      当收到3个或3个以上重复的ACK后，不等待超时直接发送丢失的报文段，这就是快速重传算法。发送丢失的报文段后（或cwnd >= ssthresh后），执行的是拥塞避免算法而不是慢启动算法，这就是快速恢复
+      #### 快速重传
+      网络是一个很复杂的环境，如果有这么一种情况，网络发生了拥堵但是又没那么的拥堵，这种情况的表现是什么呢？按照前面介绍过的滑动窗口，TCP不是one by one的发送数据包的，如果发送的数据包是1,2,3，1和3已经到，但是2没有到，由于拥堵在网络中丢失了，那么接收端会不断告诉发送端下一个需要的报文是2号报文，即使后面的报文都到了，但在2号报文没有收到的情况下，会一直发送对1号报文的ACK，表示需要的是2号报文。如果连续收到三个连续的ACK，就认为网络发生了拥堵。
 
-      过程：
-      1. 收到3个重复的ACK时，将ssthresh设置为当前拥塞窗口cwnd的一半，重传丢失的报文段，设置cwnd = ssthresh + 3 * 报文段大小
-      2. 每收到另一个重复的ACK，cwnd + 1并发送1个分组（如果新的cwnd允许发送）
-      3. 当收到下一个确认数据的ACK时，设置cwnd = ssthresh，这个ACK应该是在进行重传之后的一个往返时间内对步骤1中重传的确认，同时也是对多是的分组和收到的第一个重复的ACK之间的所有中间报文段的确认
+      ![快速重传](resources/快速重传1.jpeg)
 
-      ![快速重传](resources/快速重传.jpeg)
+      这种情况说明了两种情况：网络确实发生了拥堵，但是又没有完全拥堵。因为如果完全拥堵了，那么发送端也不会受到三个ACK数据报文，所以这种情况没有必要从头再来。针对这种情况，提出了一个快速重传的方案，其思想如下：
+      1. ssthresh设置为cwnd的一半
+      2. cwnd设置为ssthresh的值
+      3. 不需要重新进入慢启动阶段而是进入拥塞避免阶段
 
+      ![快速重传](resources/快速重传2.jpeg)
+
+      #### 快速恢复
+      快速重传算法已经尽力快的恢复对于网络的传送，但是设计们本着“面包里面抠面粉”的原则，在上面的快速重传算法中尝试想想有没有进步空间，在全面分析之后，提出了快速恢复的算法，其具体做法如下：
+      1. 在收到3个重复的ACK之后，ssthresh设置为cwnd的一半，然后把cwnd设置为ssthresh加3个单位的大小，接着重传丢失的报文段，如果用前面的例子来举例就是重传2号报文。
+      2. 如果这个时候再次收到重传的ACK，那么拥塞窗口增加1。
+      4. 如果收到的是新的数据包的ACK，把cwnd设置为第一步的ssthresh的值。为什么这么做，因为如果收到的新的ACK，说明网络已经恢复了，可以进入拥塞避免的线性增长阶段了。
+      
+      第一个步里为什么加3呢，因为这个时候连续的收到3个ACK包，那么可以认为网络还有3个单位大小的余额，同时也可以这么想，说明有3个“老”的数据包已经从网络上离开了。
       </details>
 
 - MySQL
@@ -2348,7 +2357,7 @@
         2. Redis默认每秒进行十次过期扫描，过期扫描不会扫描所有过期字典中的key，而是采用了一种简单的贪心策略。
         3. 从过期字典中随机选择20个key；删除这20个key中已过期的key；如果过期key比例超过 1/4，那就重复上一步。
       同时，为了保证在过期扫描期间不会出现过度循环，导致线程卡死，算法还增加了扫描时间上限，默认不会超过25ms。
-      
+
       </details> 
 
     - <details><summary>内存淘汰机制</summary>
@@ -2413,6 +2422,7 @@
 
     - <details><summary>Redis持久化</summary>
       Redis的持久化有两个方式：
+
       - 快照：将存在于某一时刻的所有数据都写入硬盘里面
        
         发起快照的方式：
@@ -2436,7 +2446,7 @@
         - auto-aof-rewrite-percentage：配置执行BGREWRITEAOF的时机
         - auto-aof-rewrite-min-size：配置执行BGREWRITEAOF的时机
 
-        随着Redis的允许，AOF文件的体积也会越来越大，为了解决AOF文件体积不断增大的问题，用户可以向Redis发送BGREWRITEAOF命令，这个命令会通过移除AOF文件中的冗余命令来重写（rewrite）AOF文件，使AOF文件的体积变得尽可能地小。BGREWRITEAOF的工作原理和BGSAVE创建快照的工作原理非常相似：Redis 会创建一个子进程，然后由子进程负责对 AOF 文件进行重写。
+        随着Redis的运行，AOF文件的体积也会越来越大，为了解决AOF文件体积不断增大的问题，用户可以向Redis发送BGREWRITEAOF命令，这个命令会通过移除AOF文件中的冗余命令来重写（rewrite）AOF文件，使AOF文件的体积变得尽可能地小。BGREWRITEAOF的工作原理和BGSAVE创建快照的工作原理非常相似：Redis 会创建一个子进程，然后由子进程负责对 AOF 文件进行重写。
 
         跟快照持久化可以通过设置save选项来自动执行BGSAVE一样，AOF持久化也可以通过设置auto-aof-rewrite-percentage选项和auto-aof-rewrite-min-size选项来自动执行BGREWRITEAOF。假设用户对Redis设置了配置选项auto-aof-rewrite-percentage
         100和auto-aof-rewrite-min-size 64mb，并且启用了AOF持久化，那么当AOF文件的体积大于64 MB，并且AOF文件的体积比上一次重写之后的体积大了至少一倍（100%）的时候，Redis将执行BGREWRITEAOF命令。
@@ -2640,19 +2650,19 @@
     - <details><summary>Mysql分布式锁</summary>
 
       #### 建表
-      ![建表](resources/MySQL&#32;Lock&#32;Table.jpg)
+      ![建表](resources/MySQLLockTable.jpg)
 
       #### lock
       lock一般是阻塞式的获取锁，意思就是不获取到锁誓不罢休，可以写一个死循环来执行其操作
       为了达到可重入锁的效果那么应该先进行查询，如果有值，那么需要比较node_info是否一致，这里的node_info可以用机器IP和线程名字来表示，如果一致那么就加可重入锁count的值，如果不一致那么就返回false。如果没有值那么直接插入一条数据，并且这一段代码需要加事务，必须要保证这一系列操作的原子性
-      ![lock1](resources/MySQL&#32;Lock1.jpg)
+      ![lock1](resources/MySQLLock1.jpg)
 
-      ![lock1](resources/MySQL&#32;Lock2.jpg)
+      ![lock1](resources/MySQLLock2.jpg)
 
 
       #### unlock
       count为1那么可以删除，如果大于1那么需要减去1
-      ![unlock](resources/MySQL&#32;UnLock.jpg)
+      ![unlock](resources/MySQLUnLock.jpg)
 
       #### 锁超时
       有可能会遇到获取到锁的节点挂了，那么这个锁就不会得到释放，可以启动一个定时任务，通过计算一般处理任务的一般的时间，比如是5ms，那么可以稍微扩大一点，当这个锁超过20ms没有被释放就可以认定是节点挂了然后将其直接释放
@@ -2880,7 +2890,7 @@
       在doCommit阶段，如果参与者无法及时接收到来自协调者的doCommit或者rebort请求时，会在等待超时之后，会继续进行事务的提交。（其实这个应该是基于概率来决定的，当进入第三阶段时，说明参与者在第二阶段已经收到了PreCommit请求，那么协调者产生PreCommit请求的前提条件是他在第二阶段开始之前，收到所有参与者的CanCommit响应都是Yes（一旦参与者收到了PreCommit，意味他知道大家其实都同意修改了）。所以，一句话概括就是，当进入第三阶段时，由于网络超时等原因，虽然参与者没有收到commit或者abort响应，但是他有理由相信：成功提交的几率很大。）
 
       #### 存在的问题
-      相对于2PC，3PC主要解决的单点故障问题，并减少阻塞，因为一旦参与者无法及时收到来自协调者的信息之后，他会默认执行commit。而不会一直持有事务资源并处于阻塞状态。但是这种机制也会导致数据一致性问题，因为，由于网络原因，协调者发送的abort响应没有及时被参与者接收到，那么参与者在等待超时之后执行了commit操作。这样就和其他接到abort命令并执行回滚的参与者之间存在数据不一致的情况
+      相对于2PC，3PC主要解决的单点故障问题，并减少阻塞，因为一旦参与者无法及时收到来自协调者的信息之后，他会默认执行commit，而不会一直持有事务资源并处于阻塞状态。但是这种机制也会导致数据一致性问题，因为，由于网络原因，协调者发送的abort响应没有及时被参与者接收到，那么参与者在等待超时之后执行了commit操作。这样就和其他接到abort命令并执行回滚的参与者之间存在数据不一致的情况
 
       </details> 
     
@@ -2916,8 +2926,8 @@
 
       </details> 
 
-    - <details><summary>消息事务+最终一致性</summary> 
-
+    - <details><summary>消息事务+最终一致性</summary>
+     
       #### 介绍
       基于消息中间件的两阶段提交，本质上是对消息中间件的一种特殊利用，它是将本地事务和发消息放在了一个分布式事务里，保证要么本地操作成功成功并且对外发消息成功，要么两者都失败，开源的RocketMQ就支持这一特性
 
@@ -2955,7 +2965,7 @@
     3. Acceptor比较n和minProposal，如果n>minProposal，minProposal=n，并且将acceptedProposal和acceptedValue返回；
     4. Proposer接收到过半数回复后，如果发现有acceptedValue返回，将所有回复中acceptedProposal最大的acceptedValue作为本次提案的value，否则可以任意决定本次提案的value；
     5. 到这里可以进入第二阶段，广播Accept(n,value) 到所有节点；
-    6. Acceptor比较n和minProposal，如果n>=minProposal，则acceptedProposal=minProposal=n，acceptedValue=value，本地持久化后，返回；否则，返回minProposal（第二阶段时可能有一个Proposer发送了一个Proposal ID更大的Prepare请求给Acceptor，此时Acceptor拒绝之前Proposer的提案，这里返回minProposal实际上就是那个更大的Proposal ID，这相当于告诉了最开始的Proposer现在有一个更大的Proposal ID了）；
+    6. Acceptor比较n和minProposal，如果n>=minProposal，则acceptedProposal=minProposal=n，acceptedValue=value，本地持久化后返回；否则，返回minProposal（第二阶段时可能有一个Proposer发送了一个Proposal ID更大的Prepare请求给Acceptor，此时Acceptor拒绝之前Proposer的提案，这里返回minProposal实际上就是那个更大的Proposal ID，这相当于告诉了最开始的Proposer现在有一个更大的Proposal ID了）；
     7. 提议者接收到过半数请求后，如果发现有返回值result > n，表示有更新的提案（也就是Proposal ID更大的提案，此时跳转到第一步，再次尝试让其它副本接受自己的Value或获取已经被提交的Value）；否则value达成一致；
     8. 最后就是Learn阶段；
 
@@ -3678,20 +3688,16 @@
     - <details><summary>MVP</summary>
        
       #### MVP介绍
-      ```
       MVP模式将MVC的Controller改名为Presenter，Presenter持有Model和View，Model和View不直接交互，主要的程序逻辑在Presenter里实现。Presenter与具体的View是没有直接关联的，而是通过定义好的接口进行交互，也就是Presenter持有的是View的接口，从而使得在变更View的时候可以保持Presenter的不变，即重用，同时Presenter持有Model的接口，Model的变更也不影响Presenter和View
 
       MVP的优点：
-      Model与View完全分离，修改View不会影响Model
-      由于Presenter使用的是View和Model的接口，所以View和Model的改变也不会影响Presenter的逻辑
-      ```
+      1. Model与View完全分离，修改View不会影响Model。
+      2. 由于Presenter使用的是View和Model的接口，所以View和Model的改变也不会影响Presenter的逻辑
       </details>
     
     - <details><summary>MVVM</summary>
        
       #### MVVM介绍
-      ```
       MVVM模式没有了Presenter，取而代之的是ViewModel（Model of View），MVVM中的Model只负责保存数据，View只负责展示数据，ViewModel负责将View的变化更新到Model，同时负责将Model的变化更新到View，也就是实现了双向绑定，类似AngularJs，使得开发人员只需要关注Model的变化，让MVVM框架去自动更新View（对于前端页面来说就是DOM）状态，从而把开发者从操作View更新的繁琐步骤中解脱出来
-      ```
       </details>
     </details>
