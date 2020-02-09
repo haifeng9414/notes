@@ -274,3 +274,64 @@ Controller就是利用Reflector获取全量对象并监控对象的变化，并�
 缺点：只能存字节数组、堆外内存难以控制，如果内存泄漏，很难排查
 
 项目中的设计模式
+获取插件的工厂模式
+Spring单例、代理、监听器模式
+Informer的模版方法模式
+创建CR时的建造者模式
+
+插件加载过程：
+```java
+try {
+    Thread currentThread = Thread.currentThread();
+    ClassLoader sysCloader = currentThread.getContextClassLoader();
+    jarFileClassLoader = new JarFileClassLoader(new URL[]{new File(targetFilePath).toURI().toURL()}, sysCloader);
+    currentThread.setContextClassLoader(jarFileClassLoader);
+    scanFileToPath(targetFilePath, 2); // 使用jarFileClassLoader加载targetFilePath中的jar
+} catch (MalformedURLException e) {
+    e.printStackTrace();
+}
+super.init();
+Collection plugins = getPlugins();
+this.cloudProviders.addAll(plugins);
+```
+
+CloudProviderManager类作为bean被初始化，上面的代码在其init方法中。JarFileClassLoader为自定义的ClassLoader，继承自URLClassLoader，该ClassLoader根据字符串创建File对象，再通过f.toURI().toURL()获取URL，最后使用父类URLClassLoader的addURL方法加载jar。
+
+上面的`super.init();`和`getPlugins`方法如下，简单来说就是创建`AnnotationConfigApplicationContext`对象，通过它扫描指定包下的指定注解将其作为bean，最后返回`AnnotationConfigApplicationContext`对象中带有指定注解的bean即可：
+```java
+public void init() {
+    loadContext();
+}
+
+private void loadContext() {
+    if (context == null) {
+        // Create a parent context containing all beans provided to plugins
+        // More on that below in the article...
+        GenericApplicationContext parentContext = new GenericApplicationContext();
+        parentContext.refresh();
+
+        // Create the annotation-based context
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        context.setParent(parentContext);
+
+        // Scan for classes annotated with @<PluginAnnotaionType>,
+        // do not include standard Spring annotations in scan
+        ClassPathBeanDefinitionScanner scanner =
+                new ClassPathBeanDefinitionScanner(context, false);
+        scanner.addIncludeFilter(new AnnotationTypeFilter(pluginAnnotationType));
+        scanner.scan(pluginBasePackage);
+        context.refresh();
+        this.context = context;
+    }
+
+}
+
+private Collection getPluginDescriptors(ListableBeanFactory context) {
+    return context.getBeansWithAnnotation(pluginAnnotationType).values();
+}
+
+protected Collection getPlugins() {
+    loadContext();
+    return getPluginDescriptors(context);
+}
+```
