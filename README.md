@@ -588,6 +588,110 @@
           [LockSupport](Java/Java源码阅读/并发类/LockSupport.md)
       </details>
 
+      - <details><summary>LockSupport</summary>
+
+      ThreadLocal的实现原理简单来说就是每个Thread对象都有一个Map：
+      ```java
+      ThreadLocal.ThreadLocalMap threadLocals = null;
+      ```
+
+      ThreadLocal对象执行set操作时，首先获取当前ThreadLocalMap，之后再将ThreadLocal对象自己作为key，set方法的参数作为值保存到ThreadLocalMap，由于每个Thread都有一个这样的Map，使得每个ThreadLocal对象都能够在执行set操作时所在的Thread的ThreadLocalMap中保存以自己为key的Entry，从而实现保存的值的线程间的隔离，ThreadLocal的set方法如下：
+      ```java
+      public void set(T value) {
+          Thread t = Thread.currentThread();
+          ThreadLocalMap map = getMap(t);
+          if (map != null)
+              map.set(this, value);
+          else
+              createMap(t, value);
+      }
+
+      void createMap(Thread t, T firstValue) {
+          t.threadLocals = new ThreadLocalMap(this, firstValue);
+      }
+      ```
+
+      对于ThreadLocal.ThreadLocalMap，需要注意的是其Entry类的定义：
+      ```java
+      static class Entry extends WeakReference<ThreadLocal<?>> {
+          /** The value associated with this ThreadLocal. */
+          Object value;
+
+          Entry(ThreadLocal<?> k, Object v) {
+              super(k);
+              value = v;
+          }
+      }
+      ```
+
+      可以看到Entry的Key是弱引用，而ThreadLocal在set值时，Key就是ThreadLocal本身，当ThreadLocal不再使用时，也就是没有强引用指向ThreadLocal了，则该ThreadLocal对应的Entry的Key在gc后就是null，但     是由于Entry对value是强引用，而Thread对象对ThreadLocalMap是强引用，ThreadLocalMap也强引用Entry，所以value不会被释放，所以在Thread一直不被释放的情况下，会存在内存泄漏，解决方案就是在不再使用    ThreadLocal的时候执行ThreadLocal的remove方法：
+      ```java
+      public void remove() {
+          ThreadLocalMap m = getMap(Thread.currentThread());
+          if (m != null)
+              m.remove(this);
+      }
+
+      private void remove(ThreadLocal<?> key) {
+          Entry[] tab = table;
+          int len = tab.length;
+          int i = key.threadLocalHashCode & (len-1);
+          for (Entry e = tab[i];
+               e != null;
+               e = tab[i = nextIndex(i, len)]) {
+              if (e.get() == key) {
+                  e.clear();
+                  expungeStaleEntry(i);
+                  return;
+              }
+          }
+      }
+      ```
+
+      调用remove方法的主要目的是能够触发expungeStaleEntry方法的执行，调用get也能触发expungeStaleEntry方法的执行，该方法主要执行Key为null的Entry的清理工作：
+      ```java
+      private int expungeStaleEntry(int staleSlot) {
+          Entry[] tab = table;
+          int len = tab.length;
+
+          // expunge entry at staleSlot
+          tab[staleSlot].value = null;
+          tab[staleSlot] = null;
+          size--;
+
+          // Rehash until we encounter null
+          Entry e;
+          int i;
+          for (i = nextIndex(staleSlot, len);
+               (e = tab[i]) != null;
+               i = nextIndex(i, len)) {
+              ThreadLocal<?> k = e.get();
+              if (k == null) {
+                  e.value = null;
+                  tab[i] = null;
+                  size--;
+              } else {
+                  int h = k.threadLocalHashCode & (len - 1);
+                  if (h != i) {
+                      tab[i] = null;
+
+                      // Unlike Knuth 6.4 Algorithm R, we must scan until
+                      // null because multiple entries could have been stale.
+                      while (tab[h] != null)
+                          h = nextIndex(h, len);
+                      tab[h] = e;
+                  }
+              }
+          }
+          return i;
+      }
+      ```
+
+      从实现也能看出，ThreadLocalMap内部使用开放地址法解决hash冲突
+
+      </details>
+
+
 - JAVA相关
   - <details><summary>synchronized原理</summary>
 
