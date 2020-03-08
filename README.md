@@ -590,137 +590,137 @@
 
       - <details><summary>ThreadLocal</summary>
 
-      `ThreadLocal`的实现原理简单来说就是每个Thread对象都有一个Map：
-      ```java
-      ThreadLocal.ThreadLocalMap threadLocals = null;
-      ```
+          `ThreadLocal`的实现原理简单来说就是每个Thread对象都有一个Map：
+          ```java
+          ThreadLocal.ThreadLocalMap threadLocals = null;
+          ```
 
-      `ThreadLocal`对象执行set操作时，首先获取当前`ThreadLocalMap`，之后再将`ThreadLocal`对象自己作为key，set方法的参数作为值保存到`ThreadLocalMap`，由于每个Thread都有一个这样的Map，使得每个`ThreadLocal`对象都能够在执行set操作时所在的Thread的`ThreadLocalMap`中保存以自己为key的`Entry`，从而实现保存的值的线程间的隔离，`ThreadLocal`的set方法如下：
-      ```java
-      public void set(T value) {
-          Thread t = Thread.currentThread();
-          ThreadLocalMap map = getMap(t);
-          if (map != null)
-              map.set(this, value);
-          else
-              createMap(t, value);
-      }
-
-      void createMap(Thread t, T firstValue) {
-          t.threadLocals = new ThreadLocalMap(this, firstValue);
-      }
-      ```
-
-      对于`ThreadLocal.ThreadLocalMap`，需要注意的是其`Entry`类的定义：
-      ```java
-      static class Entry extends WeakReference<ThreadLocal<?>> {
-          /** The value associated with this ThreadLocal. */
-          Object value;
-
-          Entry(ThreadLocal<?> k, Object v) {
-              super(k);
-              value = v;
-          }
-      }
-      ```
-
-      可以看到`Entry`的Key是弱引用，而`ThreadLocal`在set值时，Key就是`ThreadLocal`本身，当`ThreadLocal`不再使用时，也就是没有强引用指向`ThreadLocal`了，则该`ThreadLocal`对应的`Entry`的Key在gc后就是null，但是由于`Entry`对value是强引用，而Thread对象对`ThreadLocalMap`是强引用，`ThreadLocalMap`也强引用`Entry`，所以value不会被释放，所以在Thread一直不被释放的情况下，会存在内存泄漏，解决方案就是在不再使用`ThreadLocal`的时候执行`ThreadLocal`的`remove()`方法：
-      ```java
-      public void remove() {
-          ThreadLocalMap m = getMap(Thread.currentThread());
-          if (m != null)
-              m.remove(this);
-      }
-
-      private void remove(ThreadLocal<?> key) {
-          Entry[] tab = table;
-          int len = tab.length;
-          int i = key.threadLocalHashCode & (len-1);
-          for (Entry e = tab[i];
-               e != null;
-               e = tab[i = nextIndex(i, len)]) {
-              if (e.get() == key) {
-                  e.clear();
-                  expungeStaleEntry(i);
-                  return;
-              }
-          }
-      }
-      ```
-
-      调用`remove()`方法的主要目的是能够触发`expungeStaleEntry()`方法的执行，调用get也能触发`expungeStaleEntry()`方法的执行，该方法主要执行Key为null的`Entry`的清理工作：
-      ```java
-      private int expungeStaleEntry(int staleSlot) {
-          Entry[] tab = table;
-          int len = tab.length;
-
-          // expunge entry at staleSlot
-          tab[staleSlot].value = null;
-          tab[staleSlot] = null;
-          size--;
-
-          // Rehash until we encounter null
-          Entry e;
-          int i;
-          for (i = nextIndex(staleSlot, len);
-               (e = tab[i]) != null;
-               i = nextIndex(i, len)) {
-              ThreadLocal<?> k = e.get();
-              if (k == null) {
-                  e.value = null;
-                  tab[i] = null;
-                  size--;
-              } else {
-                  int h = k.threadLocalHashCode & (len - 1);
-                  if (h != i) {
-                      tab[i] = null;
-
-                      // Unlike Knuth 6.4 Algorithm R, we must scan until
-                      // null because multiple entries could have been stale.
-                      while (tab[h] != null)
-                          h = nextIndex(h, len);
-                      tab[h] = e;
-                  }
-              }
-          }
-          return i;
-      }
-      ```
-
-      从实现也能看出，`ThreadLocalMap`内部使用开放地址法解决hash冲突
-
-      另外稍微提一下`InheritableThreadLocal`的实现，如果父进程的`ThreadLocal`为`InheritableThreadLocal`类型，则子进程能够继承父进程的`ThreadLocal`的数据，实现原理是Thread的构造函数会在创建子线程对象时判断当前进程，也就是正在创建子进程的进程是否存在`InheritableThreadLocal`，能够存在则将其作为参数创建子进程的`ThreadLocal`，代码如下：
-      ```java
-      Thread parent = currentThread();
-      // 略
-      // inheritThreadLocals默认为true
-      if (inheritThreadLocals && parent.inheritableThreadLocals != null)
-          this.inheritableThreadLocals =
-              ThreadLocal.createInheritedMap(parent.inheritableThreadLocals);
-
-      static ThreadLocalMap createInheritedMap(ThreadLocalMap parentMap) {
-          return new ThreadLocalMap(parentMap);
-      }
-      ```
-
-      下面是`InheritableThreadLocal`的实现，可以看到，主要是用`inheritableThreadLocals`替换了原来的`threadLocals`变量，读写都是基于`inheritableThreadLocals`：
-      ```java
-      public class InheritableThreadLocal<T> extends ThreadLocal<T> {
-          protected T childValue(T parentValue) {
-              return parentValue;
-          }
-
-          ThreadLocalMap getMap(Thread t) {
-            return t.inheritableThreadLocals;
+          `ThreadLocal`对象执行set操作时，首先获取当前`ThreadLocalMap`，之后再将`ThreadLocal`对象自己作为key，set方法的参数作为值保存到`ThreadLocalMap`，由于每个Thread都有一个这样的Map，使得每个`ThreadLocal`对象都能够在执行set操作时所在的Thread的`ThreadLocalMap`中保存以自己为key的`Entry`，从而实现保存的值的线程间的隔离，`ThreadLocal`的set方法如下：
+          ```java
+          public void set(T value) {
+              Thread t = Thread.currentThread();
+              ThreadLocalMap map = getMap(t);
+              if (map != null)
+                  map.set(this, value);
+              else
+                  createMap(t, value);
           }
 
           void createMap(Thread t, T firstValue) {
-              t.inheritableThreadLocals = new ThreadLocalMap(this, firstValue);
+              t.threadLocals = new ThreadLocalMap(this, firstValue);
           }
-      }
-      ```
+          ```
 
-      </details>
+          对于`ThreadLocal.ThreadLocalMap`，需要注意的是其`Entry`类的定义：
+          ```java
+          static class Entry extends WeakReference<ThreadLocal<?>> {
+              /** The value associated with this ThreadLocal. */
+              Object value;
+
+              Entry(ThreadLocal<?> k, Object v) {
+                  super(k);
+                  value = v;
+              }
+          }
+          ```
+
+          可以看到`Entry`的Key是弱引用，而`ThreadLocal`在set值时，Key就是`ThreadLocal`本身，当`ThreadLocal`不再使用时，也就是没有强引用指向`ThreadLocal`了，则该`ThreadLocal`对应的`Entry`的Key在gc后就是null，但是由于`Entry`对value是强引用，而Thread对象对`ThreadLocalMap`是强引用，`ThreadLocalMap`也强引用`Entry`，所以value不会被释放，所以在Thread一直不被释放的情况下，会存在内存泄漏，解决方案就是在不再使用`ThreadLocal`的时候执行`ThreadLocal`的`remove()`方法：
+          ```java
+          public void remove() {
+              ThreadLocalMap m = getMap(Thread.currentThread());
+              if (m != null)
+                  m.remove(this);
+          }
+
+          private void remove(ThreadLocal<?> key) {
+              Entry[] tab = table;
+              int len = tab.length;
+              int i = key.threadLocalHashCode & (len-1);
+              for (Entry e = tab[i];
+                  e != null;
+                  e = tab[i = nextIndex(i, len)]) {
+                  if (e.get() == key) {
+                      e.clear();
+                      expungeStaleEntry(i);
+                      return;
+                  }
+              }
+          }
+          ```
+
+          调用`remove()`方法的主要目的是能够触发`expungeStaleEntry()`方法的执行，调用get也能触发`expungeStaleEntry()`方法的执行，该方法主要执行Key为null的`Entry`的清理工作：
+          ```java
+          private int expungeStaleEntry(int staleSlot) {
+              Entry[] tab = table;
+              int len = tab.length;
+
+              // expunge entry at staleSlot
+              tab[staleSlot].value = null;
+              tab[staleSlot] = null;
+              size--;
+
+              // Rehash until we encounter null
+              Entry e;
+              int i;
+              for (i = nextIndex(staleSlot, len);
+                  (e = tab[i]) != null;
+                  i = nextIndex(i, len)) {
+                  ThreadLocal<?> k = e.get();
+                  if (k == null) {
+                      e.value = null;
+                      tab[i] = null;
+                      size--;
+                  } else {
+                      int h = k.threadLocalHashCode & (len - 1);
+                      if (h != i) {
+                          tab[i] = null;
+
+                          // Unlike Knuth 6.4 Algorithm R, we must scan until
+                          // null because multiple entries could have been stale.
+                          while (tab[h] != null)
+                              h = nextIndex(h, len);
+                          tab[h] = e;
+                      }
+                  }
+              }
+              return i;
+          }
+          ```
+
+          从实现也能看出，`ThreadLocalMap`内部使用开放地址法解决hash冲突
+
+          另外稍微提一下`InheritableThreadLocal`的实现，如果父进程的`ThreadLocal`为`InheritableThreadLocal`类型，则子进程能够继承父进程的`ThreadLocal`的数据，实现原理是Thread的构造函数会在创建子线程对象时判断当前进程，也就是正在创建子进程的进程是否存在`InheritableThreadLocal`，能够存在则将其作为参数创建子进程的`ThreadLocal`，代码如下：
+          ```java
+          Thread parent = currentThread();
+          // 略
+          // inheritThreadLocals默认为true
+          if (inheritThreadLocals && parent.inheritableThreadLocals != null)
+              this.inheritableThreadLocals =
+                  ThreadLocal.createInheritedMap(parent.inheritableThreadLocals);
+
+          static ThreadLocalMap createInheritedMap(ThreadLocalMap parentMap) {
+              return new ThreadLocalMap(parentMap);
+          }
+          ```
+
+          下面是`InheritableThreadLocal`的实现，可以看到，主要是用`inheritableThreadLocals`替换了原来的`threadLocals`变量，读写都是基于`inheritableThreadLocals`：
+          ```java
+          public class InheritableThreadLocal<T> extends ThreadLocal<T> {
+              protected T childValue(T parentValue) {
+                  return parentValue;
+              }
+
+              ThreadLocalMap getMap(Thread t) {
+                return t.inheritableThreadLocals;
+              }
+
+              void createMap(Thread t, T firstValue) {
+                  t.inheritableThreadLocals = new ThreadLocalMap(this, firstValue);
+              }
+          }
+          ```
+
+        </details>
 
 
 - JAVA相关
