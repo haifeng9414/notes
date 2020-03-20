@@ -2814,6 +2814,69 @@
 
       </details>
 
+    - <details><summary>Redis常见问题</summary>
+
+      - 什么是Redis的事务
+
+        Redis中的事务是一组命令的集合，事务同命令一样都是Redis的最小执行单位，一个事务中的命令要么都执行，要么都不执行，Redis保证了事务执行期间的原子性，事务执行期间如果某个命令执行失败了，不会影响其他命令的执行。事务执行过程：
+        ```
+        MULTI # 开启事务，该语句之后的命令都是事务内的命令，在EXEC之前不会被执行
+        SET a valuea
+        SET b valueb
+        EXEC # 执行事务
+        ```
+
+        事务可以配合`watch`命令使用，在执行`EXEC`之前如果被watch的key被其他客户端操作了，则事务不会执行：
+        ```
+        WATCH mykey # watch以保证其他客户端在EXEC之前没有修改mykey，否则下面的命令无法保证原子性
+        val = GET mykey
+        val = val + 1
+        MULTI
+        SET mykey $val
+        EXEC
+        ```
+
+        上面的代码可以保证在执行`EXEC`之前，如果当前连接获取的mykey的值被其它连接的客户端修改，那么当前连接的`EXEC`命令将执行失败。
+
+        执行`EXEC`命令后会取消对所有键的监控，如果不想执行事务中的命令也可以使用`UNWATCH`命令来取消监控。如下：
+        ```
+        WATCH key  
+        isFieldExists = HEXISTS key, field  
+        if isFieldExists is 1 # key存在的时候才执行事务
+        MULTI  
+        HSET key, field, value  
+        EXEC  
+        else # 否则取消watch
+        UNWATCH  
+        return isFieldExists
+        ```
+
+        或者使用`DISCARD`命令也可以，该命令会取消事务，如果正在使用`WATCH`命令监视某个（或某些）key，那么`DISCARD`命令会取消所有监视，等同于执行了`UNWATCH`。
+
+      - 一个字符串类型的值能存储最大容量是多少
+
+        512M
+
+      - Redis对过期key的处理
+
+        当访问一个key时发现该key过期了，直接删除，这是Redis的惰性删除机制，Redis还有定期删除机制：
+        1. 默认情况下CPU空闲时每秒执行十次定期删除操作
+        2. 每次清理过期key的时间默认不能超过25ms
+        4. 依次遍历所有的DB
+        5. 从db的过期列表中随机取20个key，判断是否过期，如果过期，则清理
+        6. 如果有5个以上的key过期，则重复步骤5，否则继续处理下一个db
+        7. 在清理过程中，如果到了时间限制，退出清理过程
+
+      - Redis的集群模式采用分区实现有什么缺点
+
+        1. 涉及多个key的操作通常不会被支持。例如不能对两个集合求交集，因为他们可能被存储到不同的Redis实例（或者使用{same}keyxxx的形式作为key，redis只会计算{}里的内容的hash作为分区依据，保证key在同一个分区就能使用交集）
+        2. 同时操作多个key，则不能使用Redis事务
+        3. 因为数据分布在各个分区，所以备份恢复也很麻烦
+
+      - 待补充
+
+      </details>
+
 - 分布式
   - 分布式锁
     - <details><summary>Mysql分布式锁</summary>
