@@ -308,6 +308,60 @@
 
           经过这样的设计，相对常用的对象都能在eden缓存中找到，不常用（有可能被销毁的对象）的则进入longterm缓存。而longterm的key的实际对象没有其他引用指向它时，gc就会自动回收heap中该弱引用指向的实际对象，弱引用进入引用队列。longterm在调用put、get等方法时会调用expungeStaleEntries()方法，遍历引用队列中的弱引用，并清除对应的Entry，不会造成内存空间的浪费。
 
+          不过当使用Integer作为WeakHashMap的key时需要注意，Integer对-128到127做了缓存，使用Integer.valueOf(key)或者使用自动装箱机制获得的-128到127的Integer对象实际上都是Integer类内部的缓存，这些值作为WeakHashMap的key会导致始终有强引用指向key，这将导致WeakHashMap无法回收这些key，如下：
+
+          ```java
+          public static void main(String[] args) {
+              Map<Integer, String> wmap = new WeakHashMap<>();
+              for (int i = 0; i <= 160; i += 20) {
+                  wmap.put(Integer.valueOf(i), "" + i);
+              }
+
+              System.out.println("Before GC1: ");
+              System.out.println(wmap);
+              System.gc();
+              System.out.println("After GC1: ");
+              System.out.println(wmap);
+
+              wmap.clear();
+              for (int i = 0; i <= 160; i += 20) {
+                  wmap.put(new Integer(i), "" + i);
+              }
+              System.out.println("Before GC2: ");
+              System.out.println(wmap);
+              System.gc();
+              System.out.println("After GC2: ");
+              System.out.println(wmap); // WeakHashMap的toString方法也会触发expungeStaleEntries方法的执行
+
+              wmap.clear();
+              for (int i = 0; i <= 160; i += 20) {
+                  wmap.put(i, "" + i);
+              }
+              System.out.println("Before GC3: ");
+              System.out.println(wmap);
+              System.gc();
+              System.out.println("After GC3: ");
+              System.out.println(wmap);
+          }
+
+          /*
+          Before GC1: 
+          {120=120, 60=60, 160=160, 40=40, 140=140, 80=80, 20=20, 100=100, 0=0}
+          After GC1: 
+          {120=120, 60=60, 40=40, 80=80, 20=20, 100=100, 0=0}
+          Before GC2: 
+          {120=120, 60=60, 160=160, 40=40, 140=140, 80=80, 20=20, 100=100, 0=0}
+          After GC2: 
+          {}
+          Before GC3: 
+          {120=120, 60=60, 160=160, 40=40, 140=140, 80=80, 20=20, 100=100, 0=0}
+          After GC3: 
+          {120=120, 60=60, 40=40, 80=80, 20=20, 100=100, 0=0}
+          */
+          ```
+          
+          Long类型也有这个问题，避免这个问题的解决方案是使用new Integer(key)的方式获得key，或者不使用Integer作为key。
+
           源码分析：[WeakHashMap](Java/Java源码阅读/集合类/WeakHashMap.md)
         </details>
 
