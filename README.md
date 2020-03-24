@@ -3003,11 +3003,45 @@
 
       </details>
 
+    - <details><summary>Redis慢查询分析</summary>
+
+      Redis慢查询有两个参数需要配置：
+      - slowlog-log-slower-than：设置慢查询预设的超时阈值，单位是微秒（默认10毫秒）。它所阐述的意思是如果某条命令（如key*）执行很慢，执行时间超过了设置的阈值，那么这条命令将会被记录到慢查询日志中。当slowlog-log-slower-than = 0时慢查询日志会记录所有命令，slowlog-log-slower-than < 0时相当于关闭慢查询日志
+      - slowlog-max-len：表示慢查询日志存储的条数。Redis会使用一个列表来存储慢查询日志， slowlog-max-len就是该列表的最大长度。一个命令如果满足慢查询阈值条件则会加入到该列表来，但是如果该列表已经处于最大长度时，那么会删除最开始的一条记录，然后将最新的命令插入到末尾。
+
+      查看慢查询日志使用`slowlog get [n]`命令，其中n表示展示的条数，如下：
+      ```java
+      redis 127.0.0.1:6379> slowlog get 2
+      1) 1) (integer) 14
+         2) (integer) 1309448221
+         3) (integer) 15
+         4) 1) "ping"
+      2) 1) (integer) 13
+         2) (integer) 1309448128
+         3) (integer) 30
+         4) 1) "slowlog"
+            2) "get"
+            3) "100"
+      ```
+      可以看出返回的慢查询日志由4个属性组成：
+      1. 日志的id
+      2. 发生的时间戳
+      3. 命令耗时
+      4. 执行的命令和参数
+
+      其他相关命令：
+      - slowlog len：获取慢查询列表长度
+      - slowlog reset：清空日志列表
+
+      需要注意的是，慢查询只记录命令的执行时间，并不包括命令排队和网络传输时间。因此客户端执行命令的时间会大于命令的实际执行时间。因为命令执行排队机制，慢查询会导致其他命令级联阻塞，因此客户端出现请求超时时，需要检查该时间点是否有对应的慢查询，从而分析是否为慢查询导致的命令级联阻塞。
+
+      </details>
+
     - <details><summary>Redis常见问题</summary>
 
       - 什么是Redis的事务
 
-        Redis中的事务是一组命令的集合，事务同命令一样都是Redis的最小执行单位，一个事务中的命令要么都执行，要么都不执行，Redis保证了事务执行期间的原子性，事务执行期间如果某个命令执行失败了，不会影响其他命令的执行。事务执行过程：
+        Redis中的事务是一组命令的集合，事务同命令一样都是Redis的最小执行单位，一个事务中的命令要么都执行，要么都不执行，Redis保证了事务执行期间的隔离性和一致性。Redis的事务不支持回滚，原子性要求要么全部成功要么全都不成功，Redis的事务不能保证这个，事务执行期间如果某个命令执行失败了，不会影响其他命令的执行。Redis不支持事务回滚是因为Redis操作失败的原因只可能是语法错误或者错误的数据库类型操作，这些都是在开发层面能发现的问题不会进入到生产环境，因此不需要回滚，而且Redis内部设计推崇简单和高性能，因此不需要回滚能力，事务执行过程：
         ```
         MULTI # 开启事务，该语句之后的命令都是事务内的命令，在EXEC之前不会被执行
         SET a valuea
@@ -3892,9 +3926,38 @@
       #### 限流
       限制系统的输入和输出流量，一旦达到的需要限制的阈值，就采取一些措施对流量进行限制，如延迟处理，拒绝处理，或者部分拒绝处理等等
 
-      其实通过消息队列就可以限流了，请求到来时将请求发送到消息队列，后台任务从消息队列获取消息，高并发请求会堆积在消息队列，请求的执行速率只和后台线程的数量和处理速率有关，下面介绍几种限流算法，在高并发场景下这些算法应该没有使用消息队列灵活把
+      #### 降级
+      1. 延迟服务：比如发表了评论，评论是个重要服务，所以在文章要中显示正常，但是延迟给用户增加积分，只是放到一个缓存中，等服务平稳之后再执行
+      2. 在粒度范围内关闭服务（片段降级或服务功能降级）：比如关闭相关文章的推荐，直接关闭推荐区
+      3. 页面异步请求降级：比如商品详情页上有推荐信息/配送至等异步加载的请求，如果这些信息响应慢或者后端服务有问题，可以进行降级
+      4. 写降级：比如秒杀抢购，可以只进行Cache的更新，然后异步同步扣减库存到DB，保证最终一致性即可，此时可以将DB降级为Cache
+      5. 读降级：比如多级缓存模式，如果后端服务有问题，可以降级为只读缓存，这种方式适用于对读一致性要求不高的场景
 
-      限流的算法：
+      ##### 降级分类
+      1. 降级按照是否自动化可分为：自动开关降级（超时、失败次数、故障、限流）和人工开关降级（秒杀、电商大促等）
+      2. 降级按照功能可分为：读服务降级、写服务降级
+      3. 降级按照处于的系统层次可分为：多级降级
+
+      ##### 自动降级分类
+      1. 超时降级：主要配置好超时时间和超时重试次数和机制，并使用异步机制探测恢复情况
+      2. 失败次数降级：主要是一些不稳定的api，当失败调用次数达到一定阀值自动降级，同样要使用异步机制探测恢复情况
+      3. 故障降级：比如要调用的远程服务挂掉了（网络故障、DNS故障、http服务返回错误的状态码、rpc服务抛出异常），则可以直接降级。降级后的处理方案有：默认值（比如库存服务挂了，返回默认现货）、兜底数据（比如广告挂了，返回提前准备好的一些静态页面）、缓存（之前暂存的一些缓存数据）
+      4. 限流降级：当秒杀或者抢购一些限购商品时，此时可能会因为访问量太大而导致系统崩溃，此时开发者会使用限流来进行限制访问量，当达到限流阀值，后续请求会被降级；降级后的处理方案可以是：排队页面（将用户导流到排队页面等一会重试）、无货（直接告知用户没货了）、错误页（如活动太火爆了，稍后重试）
+
+      #### 服务熔断
+      服务熔断也被称为服务过载保护，可以认为：服务熔断是服务降级的措施
+
+      服务熔断与服务降级比较：
+      1. 服务熔断对服务提供了proxy，防止服务不可能时，出现串联故障（cascading failure），导致雪崩效应
+      2. 服务熔断一般是某个服务（下游服务）故障引起，而服务降级一般是从整体负荷考虑
+
+
+      </details>
+    </details>
+
+  - <details><summary>分布式限流</summary>
+       
+      常见的限流的算法：
       ##### 计数器
       计数器是最简单粗暴的算法，比如某个服务最多只能每秒钟处理100个请求。可以设置一个1秒钟的滑动窗口，窗口中有10个格子，每个格子100毫秒，每100毫秒移动一次，每次移动都需要记录当前服务请求的次数，当滑动窗口的格子划分的越多，那么滑动窗口的滚动就越平滑，限流的统计就会越精确
       ```
@@ -4000,33 +4063,78 @@
 
       ```
 
-      #### 降级
-      1. 延迟服务：比如发表了评论，评论是个重要服务，所以在文章要中显示正常，但是延迟给用户增加积分，只是放到一个缓存中，等服务平稳之后再执行
-      2. 在粒度范围内关闭服务（片段降级或服务功能降级）：比如关闭相关文章的推荐，直接关闭推荐区
-      3. 页面异步请求降级：比如商品详情页上有推荐信息/配送至等异步加载的请求，如果这些信息响应慢或者后端服务有问题，可以进行降级
-      4. 写降级：比如秒杀抢购，可以只进行Cache的更新，然后异步同步扣减库存到DB，保证最终一致性即可，此时可以将DB降级为Cache
-      5. 读降级：比如多级缓存模式，如果后端服务有问题，可以降级为只读缓存，这种方式适用于对读一致性要求不高的场景
+      分布式限流可以使用Redis + 令牌桶算法实现，将限流逻辑写到lua脚本并在Redis执行，减少网络交互的次数，首先是客户端调用的代码：
+      ```java
+      // 执行lua脚本的实现类
+      public class RedisReteLimitScript implements RedisScript<String> {
+        private static final String SCRIPT =
+            "local ratelimit_info = redis.pcall('HMGET',KEYS[1],'last_time','current_token') local last_time = ratelimit_info[1] local current_token = tonumber(ratelimit_info[2]) local max_token = tonumber(ARGV[1]) local token_rate = tonumber(ARGV[2]) local current_time = tonumber(ARGV[3]) local reverse_time = 1000/token_rate if current_token == nil then current_token = max_token last_time = current_time else local past_time = current_time-last_time; local reverse_token = math.floor(past_time/reverse_time) current_token = current_token+reverse_token; last_time = reverse_time*reverse_token+last_time if current_token>max_token then current_token = max_token end end local result = '0' if(current_token>0) then result = '1' current_token = current_token-1 end redis.call('HMSET',KEYS[1],'last_time',last_time,'current_token',current_toke  redis.call('pexpire',KEYS[1],math.ceil(reverse_time*(max_tokencurrent_token)+(current_time-last_time))) return result";
+ 
+        @Override 
+        public String getSha1() {
+          return DigestUtils.sha1Hex(SCRIPT);
+        }
+ 
+        @Override 
+        public Class<String> getResultType() { return String.class; }
+ 
+        @Override 
+        public String getScriptAsString() { return SCRIPT; }
+      }
+      
+      // 客户端限流方法，key为限流接口的ID，max为令牌桶的最大大小，rate为每秒钟恢复的令牌数量，返回的boolean即为此次请求是否通过了限流
+      public boolean rateLimit(String key, int max, int rate) {
+        List<String> keyList = new ArrayList<>(1);
+        keyList.add(key);
+        return "1".equals(stringRedisTemplate
+            .execute(new RedisReteLimitScript(), keyList, Integer.toString(max), Integer.toString(rate),
+                Long.toString(System.currentTimeMillis())));
+      }
+      ```
 
-      ##### 降级分类
-      1. 降级按照是否自动化可分为：自动开关降级（超时、失败次数、故障、限流）和人工开关降级（秒杀、电商大促等）
-      2. 降级按照功能可分为：读服务降级、写服务降级
-      3. 降级按照处于的系统层次可分为：多级降级
+      下面是上面用到的lua脚本：
+      ```lua
+      local ratelimit_info = redis.pcall('HMGET',KEYS[1],'last_time','current_token') // 获取当前接口的限流信息
+      local last_time = ratelimit_info[1]
+      local current_token = tonumber(ratelimit_info[2])
+      local max_token = tonumber(ARGV[1]) // 获取最大令牌数量
+      local token_rate = tonumber(ARGV[2]) // 获取每秒令牌生成的数量
+      local current_time = tonumber(ARGV[3]) // 获取客户端调用lua脚本的时间
+      local reverse_time = 1000/token_rate // 计算每产生一个令牌需要多少毫秒
+      if current_token == nil then // 初始情况下桶是满的
+        current_token = max_token
+        last_time = current_time
+      else
+        local past_time = current_time-last_time // 计算上次执行限流逻辑到现在经过的毫秒数
+        local reverse_token = math.floor(past_time/reverse_time) // 计算上次执行限流逻辑到现在产生的令牌数
+        current_token = current_token+reverse_token // 更新令牌数量
+        last_time = reverse_time*reverse_token+last_time // 更新计算时间
+        if current_token>max_token then
+          current_token = max_token
+        end
+      end
+      local result = 0
+      if(current_token>0) then
+        result = 1
+        current_token = current_token-1 // 每次调用减少一个令牌
+      end
+      // 更新令牌信息
+      redis.call('HMSET',KEYS[1],'last_time',last_time,'current_token',current_token)
+      redis.call('pexpire',KEYS[1],math.ceil(reverse_time*(max_token-current_token)+(current_time-last_time)))
+      return result
+      ```
 
-      ##### 自动降级分类
-      1. 超时降级：主要配置好超时时间和超时重试次数和机制，并使用异步机制探测恢复情况
-      2. 失败次数降级：主要是一些不稳定的api，当失败调用次数达到一定阀值自动降级，同样要使用异步机制探测恢复情况
-      3. 故障降级：比如要调用的远程服务挂掉了（网络故障、DNS故障、http服务返回错误的状态码、rpc服务抛出异常），则可以直接降级。降级后的处理方案有：默认值（比如库存服务挂了，返回默认现货）、兜底数据（比如广告挂了，返回提前准备好的一些静态页面）、缓存（之前暂存的一些缓存数据）
-      4. 限流降级：当秒杀或者抢购一些限购商品时，此时可能会因为访问量太大而导致系统崩溃，此时开发者会使用限流来进行限制访问量，当达到限流阀值，后续请求会被降级；降级后的处理方案可以是：排队页面（将用户导流到排队页面等一会重试）、无货（直接告知用户没货了）、错误页（如活动太火爆了，稍后重试）
+      以上就是基于Redis的分布式限流实现，客户端调用就是：
+      ```java
+      boolean isAllow = redisManager.rateLimit("test_rateLimit_key", 10, 10)
+      ```
 
-      #### 服务熔断
-      服务熔断也被称为服务过载保护，可以认为：服务熔断是服务降级的措施
-
-      服务熔断与服务降级比较：
-      1. 服务熔断对服务提供了proxy，防止服务不可能时，出现串联故障（cascading failure），导致雪崩效应
-      2. 服务熔断一般是某个服务（下游服务）故障引起，而服务降级一般是从整体负荷考虑
-
-
-      </details>
+    </details>
+    
+  - <details><summary>MVVM</summary>
+       
+    #### MVVM介绍
+    MVVM模式没有了Presenter，取而代之的是ViewModel（Model of View），MVVM中的Model只负责保存数据，View只负责展示数据，ViewModel负责将View的变化更新到Model，同时负责将Model的变化更新到View，也就是实现了双向绑定，类似AngularJs，使得开发人员只需要关注Model的变化，让MVVM框架去自动更新View（对于前端页面来说就是DOM）状态，从而把开发者从操作View更新的繁琐步骤中解脱出来
     </details>
   
   - <details><summary>MVC、MVP和MVVM</summary>
