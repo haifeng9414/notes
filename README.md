@@ -345,6 +345,7 @@
           }
 
           /*
+          输出：
           Before GC1: 
           {120=120, 60=60, 160=160, 40=40, 140=140, 80=80, 20=20, 100=100, 0=0}
           After GC1: 
@@ -950,6 +951,98 @@
       Java提供了很多服务提供者接口（Service Provider Interface，SPI），允许第三方为这些接口提供实现。常见的SPI有JDBC、JCE、JNDI、JAXP 和JBI等。这些SPI的接口由Java核心库来提供，如JAXP的SPI接口定义包含在javax.xml.parsers包中。这些SPI的实现代码很可能是作为Java应用所依赖的jar包被包含进来，可以通过类路径（CLASSPATH）来找到，如实现了JAXP SPI的Apache Xerces所包含的jar包。SPI接口中的代码经常需要加载具体的实现类。如JAXP中的javax.xml.parsers.DocumentBuilderFactory类中的newInstance()方法用来生成一个新的DocumentBuilderFactory的实例。这里的实例的真正的类是继承自javax.xml.parsers.DocumentBuilderFactory，由SPI的实现所提供的。如在Apache Xerces中，实现的类是 org.apache.xerces.jaxp.DocumentBuilderFactoryImpl。而问题在于，SPI的接口是Java核心库的一部分，是由引导类加载器来加载的；SPI的实现类一般是由系统类加载器来加载的。引导类加载器是无法找到SPI的实现类的，因为它只加载Java的核心库，类加载器的双亲委托机制无法解决这个问题。
 
       线程上下文类加载器正好解决了这个问题。如果不做任何的设置，Java应用的线程的上下文类加载器默认就是系统上下文类加载器。在SPI接口的代码中使用线程上下文类加载器，就可以成功的加载到SPI实现的类，线程上下文类加载器在很多SPI的实现中都会用到。
+
+      </details>
+
+    </details>
+  
+  - <details><summary>异常</summary>
+
+    - <details><summary>StackOverflowError</summary>
+
+      Java在每个方法调用时都会在调用栈上分配一个栈帧，这个栈帧包含引用方法的参数和方法的返回地址。如果没有一个新的栈帧所需空间，JVM就会抛出StackOverflowError，最常见的例子就是递归调用：
+      ```java
+      public class StackOverflowErrorExample {
+          public static void recursivePrint(int num) {
+              System.out.println("Number: " + num);
+
+              if(num == 0)
+                  return;
+              else
+                  recursivePrint(++num);
+          }
+        
+          public static void main(String[] args) {
+              StackOverflowErrorExample.recursivePrint(1);
+          }
+      }
+      ```
+
+      还可以通过两个对象的方法互动调用来产生StackOverflowError，StackOverflowError的根本原因是栈的深度不够了，可以通过设置-Xss选项设置栈的最大大小
+
+      </details>
+
+    - <details><summary>OutOfMemoryError</summary>
+
+      ### 堆内存
+      最常见的就是堆内存溢出导致OutOfMemoryError（OOM），如下：
+      ```java
+      import java.util.List;
+      import java.util.ArrayList;
+
+      /**
+      * VM Args：-Xms20m -Xmx20m -XX:+HeapDumpOnOutOfMemoryError
+      */
+      public class HeapOOM {
+          public static void main(String[] args) {
+              List<OOMObject> list = new ArrayList<OOMObject>();
+              while(true) {
+                  // list保留引用，避免Full GC 回收 
+                  list.add(new OOMObject());
+              }
+          }
+
+          static class OOMObject {
+          }
+      }
+
+      /*
+      java.lang.OutOfMemoryError: Java heap space
+      Dumping heap to java_pid7768.hprof ...
+      Heap dump file created [27987840 bytes in 0.142 secs]
+      */
+      ```
+
+      通过-Xms和-Xmx选项设置堆的初识大小和最大大小，再不断申请对象并不释放引用就能导致堆内存溢出
+
+      ### 方法区
+      JDK8将方法区放到了直接内存中，对应的-XX:PermSize和XX:MaxPermSize选项也被移除了，其内存大小只受系统实际可用内存限制
+
+      ### 直接内存
+      Java虚拟机可以通过参数-XX:MaxDirectMemorySize设定直接内存可用大小，如果不指定，则默认与java堆内存大小相同，当无法申请到足够的直接内存时，也会导致OOM，如下：
+      ```java
+      public class DirectMemoryOOM {
+          private static final int _1MB = 1024 * 1024 * 1024;
+
+          public static void main(String[] args) throws Exception {
+              Field unsafeField = Unsafe.class.getDeclaredFields()[0];
+              unsafeField.setAccessible(true);
+              Unsafe unsafe = (Unsafe) unsafeField.get(null);
+
+              while (true) {
+                  unsafe.allocateMemory(_1MB);
+              }
+          }
+      }
+
+      /*
+      输出：
+      Exception in thread "main" java.lang.OutOfMemoryError
+      at sun.misc.Unsafe.allocateMemory(Native Method)
+      at com.dhf.app.DirectMemoryOOM.main(DirectMemoryOOM.java:18)
+      */
+      ```
+      这种异常的明显特征是在Heap Dump文件中看不见明显的异常。如果OOM之后Dump的文件比较小，程序中直接或间接用到了IO/NIO，可以考虑是否是直接内存溢出
 
       </details>
 
@@ -2026,6 +2119,34 @@
         5. 如果列为字符串，则where条件中必须将字符常量值加引号，否则即使该列上存在索引，也不会被使用。例如：select * from table_name where key1 = 1，如果key1列保存的是字符串，即使key1上有索引，也不会被使用
         6. WHERE字句的查询条件里有不等于号（WHERE column != ...）或<>操作符，导致匹配的行数过多，如果select的列需要回表才能获取到，则优化器会考虑回表的时间，不使用索引，如果不需要回表，则会使用索引
         7. where语句的等号左边进行函数、算术运算或其他表达式运算时，索引无效
+        </details>
+
+      - <details><summary>B树和B+树</summary>
+
+        一个B树的特性：
+        - 定义任意非叶子节点最多只有M个子节点，且M > 2
+        - 根结点的子节点数为[2, M]
+        - 除根节点以外的非叶子节点的儿子数为[M/2, M]，向上取整
+        - 非叶子节点的关键字个数 = 子节点个数 - 1
+        - 所有叶子节点位于同一层；
+        - k个关键字把节点拆成k+1段，分别指向k+1个子节点，同时满足查找树的大小关系
+
+        一个B+树的特性：
+        - 从根节点到叶节点的所有路径都具有相同的长度
+        - 所有数据信息都存储在叶子节点，非叶子节点仅作为叶节点的索引存在
+        - 根节点至少拥有两个子树
+        - 每个树节点最多拥有M个子树
+        - 每个树节点(除了根节点)拥有至少M/2个子树
+
+        B树和B+树的主要区别：
+        - B+树非叶子节点的关键字只起到索引作用，实际的数据存储在叶子节点，B树的非叶子节点也存储数据
+        - B树在找到具体的数值以后，则结束，而B+树则需要通过索引找到叶子结点中的数据才结束，也就是说B+树的搜索过程中走了一条从根结点到叶子结点的路径，查询过程是稳定的
+
+        为什么使用B树而不是B+树：
+        - B+树的磁盘读取代价低：B+树的内部节点没有指向关键字具体信息的指针，换句话说，即分支节点没有存储数据，因此其内部节点相对B树更小。如果把所有同一内部节点的关键字存放在同一盘块中，那么盘块所能容纳的关键字数量也越多，一次性读内存中的需要查找的关键字也就越多，相对来说IO读写次数也就降低了
+        - B+树的查询效率更加稳定：在B+树中，由于分支节点并不是最终指向文件内容的节点，分支节点只是叶子节点的索引，所以对于任意关键字的查找都必须从根节点走到分支节点，所有关键字查询路径长度相同，每个数据查询效率相当。而对于B树而言，其分支节点上也保存有数据，对于每一个数据的查询所走的路径长度是不一样的，效率也不一样
+        - B+树便于范围查找：由于B+树的数据都存储在叶子节点上，分支节点均为索引，方便扫库，只需扫一遍叶子即可。但是B树在分支节点上都保存着数据，要找到具体的顺序数据，需要执行一次中序遍历来查找。所以B+树更加适合范围查询的情况，在解决磁盘IO性能的同时解决了B树元素遍历效率低下的问题
+
         </details>
 
     - <details><summary>执行计划</summary>
