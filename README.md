@@ -944,7 +944,7 @@
 
       但如果情况要反过来，右边的ClassLoader需要委派链靠左边的ClassLoader加载的资源怎么办呢？由于双亲委托机制是单向的，所以没办法反过来从右边找左边。
 
-      如果ClassLoader A想要获取ClassLoader B加载的资源，可以通过aThread.setContextClassLoader(ClassLoader B)将ClassLoader B设置到aThread，之后在ClassLoader A中使用同样的thread（或者由thread创建的线程）的getContextClassLoader()方法获取ClassLoader B。
+      如果ClassLoader A想要获取ClassLoader B加载的资源，可以通过aThread.setContextClassLoader(ClassLoader B)将ClassLoader B设置到aThread，之后在ClassLoader A中使用同样的thread（或者由thread创建的线程）的getContextClassLoader()方法获取ClassLoader B。
 
       再具体一点的场景：
 
@@ -1349,7 +1349,7 @@
 
         为解决CMS算法产生空间碎片和其它一系列的问题缺陷，HotSpot提供了另外一种垃圾回收策略，G1（Garbage First）算法，通过参数-XX:+UseG1GC来启用，该算法在JDK 7u4版本被正式推出，
 
-        G1垃圾收集算法主要应用在多CPU大内存的服务中，在满足高吞吐量的同时，竟可能的满足垃圾回收时的暂停时间，该设计主要针对如下应用场景：
+        G1垃圾收集算法主要应用在多CPU大内存的服务中，在满足高吞吐量的同时，尽可能的满足垃圾回收时的暂停时间，该设计主要针对如下应用场景：
         - 垃圾收集线程和应用线程并发执行，和CMS一样
         - 空闲内存压缩时避免冗长的暂停时间
         - 应用需要更多可预测的GC暂停时间
@@ -2181,11 +2181,14 @@
         - 由于覆盖索引的机制，也算是有利于查询
         
         缺点：
-        - 如果主键是递增的，则插入时是顺序的，这样能很快的插入数据，但是如果主键非递增，则插入代价较大，也可能会导致页分裂，可以定期执行OPTIMIZE TABLE重组一下
+        - 如果主键是递增的，则插入时是顺序的，这样能很快的插入数据，但是如果主键非递增，则插入代价较大（导致了随机I/O），也可能会导致页分裂，可以定期执行OPTIMIZE TABLE重组一下
         - 普通索引需要两次索引查找才能定位到数据行
 
         #### 非聚集索引
         非聚集索引指定了表中记录的逻辑顺序，但记录的物理顺序和索引的顺序不一致，Innodb中的普通索引就是非聚集索引，也叫二级索引，其普通索引的叶节点上除了包含索引值，还包含主键值，索引按照索引值顺序存储，而不是表记录
+
+        优点：
+        - 不依赖主键递增 
 
         #### 主要区别
         聚集索引和非聚集索引的根本区别是表记录的排列顺序和与索引的排列顺序是否一致
@@ -2262,6 +2265,79 @@
         这个语句在搜索索引树的时候，只能用“张”，找到第一个满足条件的记录ID3，在MySQL 5.6之前，只能从ID3开始一个个回表。到主键索引上找出数据行，再对比字段值。而MySQL 5.6引入的索引下推优化（index condition pushdown)，可以在索引遍历过程中，对索引中包含的字段先做判断，直接过滤掉不满足条件的记录，减少回表次数。InnoDB在(name,age)索引内部就判断了age是否等于10，对于不等于10的记录，直接判断并跳过，减少了回表的次数。
         </details>
 
+      - <details><summary>使用索引排序</summary>
+
+        MySQL可以使用order by语句实现排序，但是索引本身就是有序的，如果能够利用这一点就可以减少带有order by的sql语句的执行时间。
+
+        假设存在下面的表：
+        ```sql
+        CREATE TABLE `t` (
+          `id` int(11) NOT NULL,
+          `city` varchar(16) NOT NULL,
+          `name` varchar(16) NOT NULL,
+          `age` int(11) NOT NULL,
+          `addr` varchar(128) DEFAULT NULL,
+          PRIMARY KEY (`id`),
+          KEY `city` (`city`)
+        ) ENGINE=InnoDB;
+        ```
+
+        city列上有一个普通索引，如果执行下面的语句：
+        ```sql
+        select city, name, age from t where city = '杭州' order by name limit 1000 ;
+        ```
+
+        即按照city查询，按照name排序，MySQL的排序有下面几种。
+        
+        #### 全字段排序
+        每个线程都有一个sort_buffer用于排序，对于全字段排序，MySQL的执行流程是：
+        1. 初始化sort_buffer，放入name、city、age这三个字段；
+        2. 从索引city找到第一个满足city='杭州’条件的主键id；
+        3. 到主键id索引取出整行，取name、city、age三个字段的值，存入sort_buffer中；
+        4. 从索引city取下一个记录的主键id；
+        5. 重复步骤3、4直到city的值不满足查询条件为止；
+        6. 对sort_buffer中的数据按照字段name做快速排序；
+        7. 按照排序结果取前1000行返回给客户端。
+
+        如果排序数据量太大，sort_buffer放不下，MySQL会利用磁盘临时文件辅助排序
+
+        #### rowId排序
+        如果sort_buffer中需要存放的字段很多，导致一行数据量很大，需要非常多的临时文件，则MySQL会使用rowId排序，MySQL有一个参数用于判断行数据是否过大：
+        ```
+        SET max_length_for_sort_data = 16;
+        ```
+
+        max_length_for_sort_data，是MySQL中专门控制用于排序的行数据的长度的一个参数。它的意思是，如果单行的长度超过这个值，MySQL就认为单行太大，就要缓存rowId排序。
+
+        对于rowId排序，执行流程是：
+        1. 初始化sort_buffer，两个字段name和id；
+        2. 从索引city找到第一个满足city='杭州’条件的主键id；
+        3. 到主键id索引取出整行，取name、id这两个字段，存入sort_buffer中；
+        4. 从索引city取下一个记录的主键id；
+        5. 重复步骤3、4直到不满足city='杭州’条件为止；
+        6. 对sort_buffer中的数据按照字段name进行排序；
+        7. 遍历排序结果，取前1000行，并按照id的值回到原表中取出city、name和age三个字段返回给客户端。
+
+        使用rowId排序算法会导致一行数据回表两次，但是使得排序时需要使用的临时文件数量变少了，因为sort_buffer中要存放的字段少了。
+
+        如果是通过全字段排序或者rowId排序完成的排序，则通过explain语句可以看到Extra列有Using filesort。
+        
+        #### 索引排序
+        如果索引自身就是有序的，就可以跳过排序过程，如针对表t，修改索引：
+        ```sql
+        alter table t add index city_user(city, name);
+        ```
+
+        将索引修改为联合索引，这样对于根据给定的city值找到的索引节点，name值肯定是有序的，那么最开始的select语句的执行流程将变为：
+        1. 从索引(city, name)找到第一个满足city='杭州’条件的主键id；
+        2. 到主键id索引取出整行，取name、city、age三个字段的值，作为结果集的一部分；
+        3. 从索引(city,name)取下一个记录主键id；
+        4. 重复步骤2、3，直到查到第1000条记录，或者是不满足city='杭州’条件时循环结束。
+
+        这样就避免了排序，针对开始的select语句，实际上还可以利用覆盖索引避免回表过程，不过这样会导致索引进步一变大，需要权衡。
+
+        </details>
+
       - <details><summary>索引无效的情况</summary>
 
         1. 如何MySQL优化器认为全表扫描比使用索引更快，则不使用索引，如表数据很少，考虑到行数和回表的代价，MySQL可能不使用索引
@@ -2295,7 +2371,7 @@
         - B+树非叶子节点的关键字只起到索引作用，实际的数据存储在叶子节点，B树的非叶子节点也存储数据
         - B树在找到具体的数值以后，则结束，而B+树则需要通过索引找到叶子结点中的数据才结束，也就是说B+树的搜索过程中走了一条从根结点到叶子结点的路径，查询过程是稳定的
 
-        为什么使用B树而不是B+树：
+        为什么使用B+树而不是B树：
         - B+树的磁盘读取代价低：B+树的内部节点没有指向关键字具体信息的指针，换句话说，即分支节点没有存储数据，因此其内部节点相对B树更小。如果把所有同一内部节点的关键字存放在同一盘块中，那么盘块所能容纳的关键字数量也越多，一次性读内存中的需要查找的关键字也就越多，相对来说IO读写次数也就降低了
         - B+树的查询效率更加稳定：在B+树中，由于分支节点并不是最终指向文件内容的节点，分支节点只是叶子节点的索引，所以对于任意关键字的查找都必须从根节点走到分支节点，所有关键字查询路径长度相同，每个数据查询效率相当。而对于B树而言，其分支节点上也保存有数据，对于每一个数据的查询所走的路径长度是不一样的，效率也不一样
         - B+树便于范围查找：由于B+树的数据都存储在叶子节点上，分支节点均为索引，方便扫库，只需扫一遍叶子即可。但是B树在分支节点上都保存着数据，要找到具体的顺序数据，需要执行一次中序遍历来查找。所以B+树更加适合范围查询的情况，在解决磁盘IO性能的同时解决了B树元素遍历效率低下的问题
@@ -3020,9 +3096,9 @@
       6. Sentinel设置局部领头Sentinel的规则是先到先得。即最先向目标Sentinel发送设置要求的Sentinel将会成为局部领头Sentinel，之后接受到的请求都会被拒绝
       7. 目标Sentinel接收到`SENTINEL is-master-down-by-addr`命令后，将向源Sentinel返回一条命令回复，回复中的leader_run id参数和leader_epoch参数分别记录了目标Sentinel的局部领头Sentinel的运行ID和配置纪元
       8. 源Sentinel在接收到目标Sentinel返回的命令回复之后，会检查回复中leader_epoch参数的值和自己的配置纪元是否相同，如果相同的话，那么源Sentinel继续取出回复中的leader_run id参数，如果leader_run id参数的值和源Sentinel的运行ID一致，那么表示目标Sentinel将源Sentinel设置成了局部领头Sentinel
-      9， 如果有某个Sentinel被半数以上的Sentinel设置成了局部领头Sentinel，那么这个Sentinel称为领头Sentinel
-      1.  领头Sentinel的产生需要半数以上的Sentinel支持，并且每个Sentinel在每个配置纪元里面只能设置一次局部Sentinel，所以在一个配置纪元里面，只会出现一个领头Sentinel
-      2.  如果在给定时限内，没有一个Sentinel被选举为领头Sentinel，那么各个Sentinel将在一段时间之后再次进行选举，知道选出领头Sentinel为止
+      9. 如果有某个Sentinel被半数以上的Sentinel设置成了局部领头Sentinel，那么这个Sentinel称为领头Sentinel
+      10. 领头Sentinel的产生需要半数以上的Sentinel支持，并且每个Sentinel在每个配置纪元里面只能设置一次局部Sentinel，所以在一个配置纪元里面，只会出现一个领头Sentinel
+      11. 如果在给定时限内，没有一个Sentinel被选举为领头Sentinel，那么各个Sentinel将在一段时间之后再次进行选举，知道选出领头Sentinel为止
 
       以上是《Redis设计与实现》中介绍的选举过程，很多细节没有说到，这里放一个网上的博客，比较详细的讲了Sentinel的选举过程：
       
@@ -3267,7 +3343,6 @@
       #### lock
       lock一般是阻塞式的获取锁，意思就是不获取到锁誓不罢休，可以写一个死循环来执行其操作
       为了达到可重入锁的效果那么应该先进行查询，如果有值，那么需要比较node_info是否一致，这里的node_info可以用机器IP和线程名字来表示，如果一致那么就加可重入锁count的值，如果不一致那么就返回false。如果没有值那么直接插入一条数据，并且这一段代码需要加事务，必须要保证这一系列操作的原子性
-      ![lock1](resources/MySQLLock1.jpg)
 
       ![lock1](resources/MySQLLock2.jpg)
 
@@ -3504,6 +3579,9 @@
       #### 存在的问题
       相对于2PC，3PC主要解决的单点故障问题，并减少阻塞，因为一旦参与者无法及时收到来自协调者的信息之后，他会默认执行commit，而不会一直持有事务资源并处于阻塞状态。但是这种机制也会导致数据一致性问题，因为，由于网络原因，协调者发送的abort响应没有及时被参与者接收到，那么参与者在等待超时之后执行了commit操作。这样就和其他接到abort命令并执行回滚的参与者之间存在数据不一致的情况
 
+      #### 和两阶段提交的比较
+      除了数据不一致外，两阶段提交的主要问题是阻塞，在协调者和参与者网络出现异常的情况下，参与者的事务会一直悬挂在那（即使有超时机制，也不知道应该回滚还是提交）。三阶段提交主要解决了两阶段提交的阻塞问题。参与者返回CanCommit请求的响应后，等待第二阶段指令，若等待超时，则自动abort，降低了阻塞；参与者返回PreCommit请求的响应后，等待第三阶段指令，若等待超时，则自动commit事务（也因此可能导致数据不一致），也降低了阻塞。即三阶段提交在CanCommit和PreCommit这两个阶段超时的情况下分别执行abort和commit操作，而两阶段提交在第一阶段返回响应后超时的情况下不能决定应该abort还是commit。
+      
       </details> 
     
     - <details><summary>TCC</summary>
