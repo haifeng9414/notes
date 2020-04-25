@@ -363,6 +363,15 @@
           
           Long类型也有这个问题，避免这个问题的解决方案是使用new Integer(key)的方式获得key，或者不使用Integer作为key。
 
+          另外一种情况是如果WeakHashMap中value对key存在引用，会导致key一直存在强引用，从而导致内存泄漏，如：
+          ```java
+          if (locker == null) {
+            locker = new Locker(id);
+            lockerMap.put(id, locker);  // value引用了key，entry.key == entry.value.id，导致内存泄漏
+            //lockerMap.put(new String(id), locker);  // 这是一种修改方式，保证了WeakHashMap中的key，没有被value直接或间接所引用
+          }
+          ```
+
           源码分析：[WeakHashMap](Java/Java源码阅读/集合类/WeakHashMap.md)
         </details>
 
@@ -2336,6 +2345,10 @@
 
         这样就避免了排序，针对开始的select语句，实际上还可以利用覆盖索引避免回表过程，不过这样会导致索引进步一变大，需要权衡。
 
+        索引排序也支持倒序排序，通过Explain能看到Extra中有Backward index scan。
+
+        使用索引排序需要注意的是必须满足最左前缀原则（上面的例子由于city列的值固定了，所以也能够满足最左前缀）；对于多个列的排序，这些列必须在一个联合索引中，并且排序时顺序需要一致（正序或者倒序）；如果查询语句关联了多个表，则排序的列必须全部都在第一个表中。
+
         </details>
 
       - <details><summary>索引无效的情况</summary>
@@ -2666,6 +2679,8 @@
       3. 避免使用select *
       4. 小表驱动大表查询（极客时间-MySQL实战45讲-第34篇）
       5. 可以用子查询代替join，因为使用join时MySQL不会创建临时表
+      6. 对于分页查询，如果直接使用limit M, N，并且无法使用覆盖索引，则MySQL会查询扫描所有的M行和M行之后的N行，每一行都会回表，针对这种查询，可以先查询到需要的行的id，再根据id获得结果，避免不必要的回表，如：`select * from order_info, (select id from order_info where count = 35 order by id desc limit 1000000, 20) order_info_tmp where order_info.order_id = order_info_tmp.order_id;`
+  
 
       </details>
 
