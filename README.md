@@ -2707,7 +2707,47 @@
       7. and关键字两边的列如果各自有一个单列索引，MySQL会分别使用两个列的索引并进行合并，但是更好的方案是为and两边的列创建联合索引，这样就不用单独查询两个列的索引并合并了
       8. 对于组合索引，前面的列使用范围查找时无法满足最左前缀原则，导致后面的列的索引失效（因为在索引上进行范围查找会先查找当前列所有满足条件的索引值，这样会导致索引上后续的列的值不能直接读取到了），所以设计索引时需要范围查找的列应该放到组合索引的后面，或者查询时不使用范围查找而使用IN()做为查询条件（如果可以的话），这样就能满足最左前缀原则
       9. 一些复杂的关联查询可以考虑改成多个多次单独的查询，这样的好处是能够减少锁竞争，应用层能够很方便的缓存数据
-  
+      10. 正常情况下MySQL优化器会自己选择关联查询时的驱动表，通常是选择扫描行数少的作为驱动表（当然MySQL不可能这么简单的实现，而且innodb也不知道表的确切的行数），但是有的时候这种优化反而比直接使用sql语句中第一个表作为关联表进行查询要慢，如需要对结果进行排序，但是排序的列不在驱动表中，这就导致了查询完后需要额外的排序过程，反而慢了，如：
+      ```sql
+      SELECT post.*
+      FROM post
+      INNER JOIN post_tag ON post.id = post_tag.post_id
+      WHERE post.status = 1 AND post_tag.tag_id = 123
+      ORDER BY post.created DESC
+      LIMIT 100
+      ```
+
+      用EXPLAIN查询一下SQL执行计划：
+      ```
+      +----------+---------+-------+-----------------------------+
+      | table    | key     | rows  | Extra                       |
+      +----------+---------+-------+-----------------------------+
+      | post_tag | tag_id  | 71220 | Using where; Using filesort |
+      | post     | PRIMARY |     1 | Using where                 |
+      +----------+---------+-------+-----------------------------+
+      ```
+
+      可以看到，MySQL选择使用post_tag作为驱动表，同时由于使用post表的created列作为排序列，所以存在Using filesort。为了避免这种情况，可以使用STRAIGHT_JOIN：
+      ```sql
+      SELECT post.*
+      FROM post
+      STRAIGHT_JOIN post_tag ON post.id = post_tag.post_id
+      WHERE post.status = 1 AND post_tag.tag_id = 123
+      ORDER BY post.created DESC
+      LIMIT 100
+      ```
+
+      执行计划：
+      ```
+      +----------+----------------+--------+-------------+
+      | table    | key            | rows   | Extra       |
+      +----------+----------------+--------+-------------+
+      | post     | status_created | 119340 | Using where |
+      | post_tag | post_id        |      1 | Using where |
+      +----------+----------------+--------+-------------+
+      ```
+
+      尽管post作为驱动表扫描的行数更多了，不过少了排序的过程，所有查询代价可能更小。当然，绝大数情况下还是不要使用STRAIGHT_JOIN，由优化器决定顺序比较靠谱
 
       </details>
 
@@ -2738,7 +2778,53 @@
         - 最好不要为varchar设置不需要的长度，虽然varchar(5)和varchar(200)在保存同一个字符串如'hello'时空间开销是一样的，但是更长的列会消耗更多的内存，如使用内存临时表进行排序的时候
         - datetime把日期封装到YYYYMMDDHHMMSS的整数中，与时区无关，使用8个字节存储，显示的时候会转换为"YYYY-MM-DD HH:MM:SS"的格式，而timestamp保存从1970.1.1午夜以来的秒数（UTC），使用4个字节存储，timestamp的值和时区相关，所以当值为0时，在美国东部时区会显示为"1969-12-31 19:00:00"，timestamp默认not null，插入时默认值为当前时间。处于空间效率的考虑，优先使用timestamp而不是datetime
         - MySQL使用二分查找法处理in()的查询条件，时间复杂度为O(logn)
-                    
+        - MySQL执行查询的时候，会使用嵌套循环的方式来完成，如下面的语句：
+          ```
+          select tbl1.col1,tbl2.col2  
+          from tbl1 inner join tbl2 using(col3) 
+          where tbl1.col1 in(5,6);
+          ``` 
+
+          MySQL执行时的伪代码：
+          ```
+          outer_iter = iterator_over tbl1 where col1 in(3,4)
+          outer_row = outer_iter.next
+              while outer_row
+              inner_iter = iterator over tbl2 where col3=outer_row.col3
+              inner_row = inner_iter.next
+              while inner_row
+              output[outer_row.col1,inner_row.col2]
+                  inner_row = inner_iter.next
+              end
+              out_row = outer_iter.next
+          end
+          ```
+
+          如果改成左外连接，也是类似的：
+          ```
+          select tbl1.col1 ,tbl2.col2 
+          from tbl1 left outer join tbl2 using (col3) 
+          where tbl1.col1 in (3,4)
+          ```
+
+          伪代码：
+          ```
+          outer_iter = iterator over tbl1 where col1 in(3,4)
+          outer row = outer_iter.next
+          while outer_row
+              inner_iter = iterator over tbl2 where col3 = outer_row.col3
+              inner_row = inner_iter.next
+              if inner_row
+                  while inner_row
+                      out_put [outer_row.col1,inner_row.col2]
+                      inner_row = inner_iter.next
+                  end
+              else
+                  out_put[outer_row.col1,NULL]        
+              end
+              outer_row = outer_iter.next
+          end
+          ```
       </details>
 
 - 缓存
