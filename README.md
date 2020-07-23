@@ -2703,7 +2703,32 @@
       3. 避免使用select *，只select需要的列
       4. 小表驱动大表查询（极客时间-MySQL实战45讲-第34篇）
       5. 可以用子查询代替join，因为使用join时MySQL不会创建临时表
-      6. 对于分页查询，如果直接使用limit M, N，并且无法使用覆盖索引，则MySQL会查询扫描所有的M行和M行之后的N行，每一行都会回表，针对这种查询，可以先查询到需要的行的id，再根据id获得结果，避免不必要的回表，如：`select * from order_info, (select id from order_info where count = 35 order by id desc limit 1000000, 20) order_info_tmp where order_info.order_id = order_info_tmp.order_id;`
+      6. 对于分页查询，如果直接使用limit M, N，并且无法使用覆盖索引，则MySQL会查询扫描所有的M行和M行之后的N行，每一行都会回表，针对这种查询，可以先查询到需要的行的id，再根据id获得结果，避免不必要的回表，如：
+      ```
+      select film_id, description
+      from film
+      inner join (
+          select film_id
+          from film
+          order by title
+          limit 1000000, 20
+      ) as lim using (film_id)
+      ```
+      
+      limit M, N本质上是指定offset，如果M比较大，会导致MySQL扫描大量不需要的数据行后再丢弃，还有一种优化方案是，可以记录某次查询到的数据的位置，之后再从指定位置开始扫描，避免使用offset，如需要根据租借记录做翻页，那么可以根据最新的记录的主键向后追溯，因为主键是单调递增的：
+      ```
+      select * from rental
+      order by rental_id desc limit 20
+      ```
+
+      上面的SQL如果返回的记录的主键是16049到16030，则下一页的查询可以使用下面的语句：
+      ```
+      select * from rental
+      where rental_id < 16030
+      order by rental_id desc limit 20
+      ```
+      
+      这样直接通过主键索引就找到了需要的记录的起始位置，无论翻多少页，只要是一页一页的翻，或者知道`rental_id`的范围，就能够避免使用offset
       7. and关键字两边的列如果各自有一个单列索引，MySQL会分别使用两个列的索引并进行合并，但是更好的方案是为and两边的列创建联合索引，这样就不用单独查询两个列的索引并合并了
       8. 对于组合索引，前面的列使用范围查找时无法满足最左前缀原则，导致后面的列的索引失效（因为在索引上进行范围查找会先查找当前列所有满足条件的索引值，这样会导致索引上后续的列的值不能直接读取到了），所以设计索引时需要范围查找的列应该放到组合索引的后面，或者查询时不使用范围查找而使用IN()做为查询条件（如果可以的话），这样就能满足最左前缀原则
       9. 一些复杂的关联查询可以考虑改成多个多次单独的查询，这样的好处是能够减少锁竞争，应用层能够很方便的缓存数据
@@ -2748,6 +2773,21 @@
       ```
 
       尽管post作为驱动表扫描的行数更多了，不过少了排序的过程，所有查询代价可能更小。当然，绝大数情况下还是不要使用STRAIGHT_JOIN，由优化器决定顺序比较靠谱
+      11. MySQL的min和max函数存在优化的空间，如下SQL：
+      ```
+      mysql> explain select min(actor_id) from actor where first_name = 'PENELOPE';
+      +----+-------------+-------+------------+------+---------------+------+---------+------+------+----------+-------------+
+      | id | select_type | table | partitions | type | possible_keys | key  | key_len | ref  | rows | filtered | Extra       |
+      +----+-------------+-------+------------+------+---------------+------+---------+------+------+----------+-------------+
+      |  1 | SIMPLE      | actor | NULL       | ALL  | NULL          | NULL | NULL    | NULL |  200 |    10.00 | Using where |
+      +----+-------------+-------+------------+------+---------------+------+---------+------+------+----------+-------------+
+      ``` 
+
+      `actor_id`是主键，`first_name`列没有索引，上面的查询会导致MySQL做全表扫描，理论上MySQL只需要找到第一个`first_name`等于`PENELOPE`的行就可以返回了，因为数据行就是通过主键升序排序的，第一个满足条件的行的`actor_id`值就是最小的值。这个问题可以通过下面的SQL解决：
+      ```
+      select actor_id from actor where first_name = 'PENELOPE' limit 1;
+      ```
+
 
       </details>
 
