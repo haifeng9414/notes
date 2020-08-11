@@ -1,7 +1,0 @@
-= 学习笔记
-:notes: notes
-:hardbreaks:
-
-link:notes/消息队列.adoc[消息队列]
-link:notes/Linux.adoc[Linux]
-
