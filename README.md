@@ -437,7 +437,11 @@
           成最后的结果，用分段锁提高了更新size时的并发级别
           扩容时思路是扩容过程中可以有其他线程加入扩容过程，每当某个线程在遍历数组时发现了正在进行扩容，就会加入扩容
           过程，每个线程都领取一定数量的数组元素并负责传输这些数组元素到新数组，同时用sizeCtl维护正在扩容的状态
-
+          ConcurrentHashMap的key和value都不能为nul了，而HashMap是可以存放null的key或者value，原因是如果允许key或者value为
+          null，则在并发的情况下会带来难以容忍的二义性。而在非并发安全的容器中（HashMap），这样的问题刚好是可以解决的。在map容器里面，
+          调用map.get(key)方法得到的值是null，那你无法判断这个key是在map里面没有映射过，还是这个key在map里面根本就不存在。这种情况下，
+          非并发安全的map中，可以通过map.contains(key)或map.containsKey(key)的方法来判断是不存在key还是value为null，以此来区分
+          上面说的两重含义。但是在考虑并发安全的map中，在两次调用的过程中，这个值是有可能被改变的。
           ```
 
           [ConcurrentHashMap-JDK8](Java/Java源码阅读/并发类/ConcurrentHashMap-JDK8.md)
