@@ -943,7 +943,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             int rs = runStateOf(c);
 
             // Check if queue empty only if necessary.
-            // 如果当前线程池状态非Running，则不允许添加新的线程
+            // 如果当前线程池状态非Running，则不允许添加新的线程，除非当前addWorker方法不是通过execute方法调用的（execute方法调
+            // 用时firstTask不为null），且队列非空。这样就实现了不允许因为提交新的任务导致的创建线程，但是允许其他情况下创建新的线程
+            // 如某个worker执行任务时发生了异常
             // 如果线程池状态为SHUTDOWN，并且firstTask为null，并且队列不为空，则应该新建worker处理队列中剩余的Runnable对象，此时
             // 下面的if条件不会被满足
             if (rs >= SHUTDOWN &&
@@ -2267,5 +2269,4 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         }
     }
 }
-
 ```
