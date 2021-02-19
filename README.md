@@ -656,6 +656,35 @@
           [LockSupport](Java/Java源码阅读/并发类/LockSupport.md)
       </details>
 
+      - <details><summary>ThreadPoolExecutor</summary>
+
+          #### 介绍
+          线程池的实现并不复杂，首先需要理解线程池的几个核心参数及线程池的状态。
+
+          核心参数：
+          - corePoolSize：核心线程数量，核心线程不会被回收（allowCoreThreadTimeOut参数为false的话，默认为false），即使没有任务执行，也会保持空闲状态（调用``workQueue.take()``方法阻塞等待新的任务）。如果线程池中的线程数量少于此数目，则在提交任务时被创建。
+          - maximumPoolSize：允许最大的线程数，当线程数量达到corePoolSize，且workQueue队列塞满任务了之后，能够创建的线程数量最大值。
+          - keepAliveTime：超过corePoolSize之后的线程允许的空闲时间，这个参数是通过调用阻塞队列的``workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS)``方法作用的，如果在``keepAliveTime``之后没有获取到新的任务，则多余corePoolSize的线程会被终止。另外如果allowCoreThreadTimeOut参数为true，则core线程也会受keepAliveTime参数控制（即调用的也是``workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS)``而不是``workQueue.take()``）。
+          - workQueue：``BlockingQueue``类型，当线程数量达到corePoolSize时，新提交的任务会被放到该阻塞队列中。
+          - threadFactory：创建线程的工厂，默认线程池创建的线程daemon为false，priority为Thread.NORM_PRIORITY，name为pool-poolNumber-thread-threadNumber
+          - handler：线程池执行拒绝策略，当线数量达到maximumPoolSize大小，并且workQueue也已经塞满了任务的情况下，或者线程池终止中，则提交任务时会通过handler拒绝策略来处理请求。系统默认的拒绝策略有以下几种：
+              - AbortPolicy：默认拒绝策略，直接抛RejectedExecutionException异常。
+              - DiscardPolicy：直接抛弃不处理。
+              - DiscardOldestPolicy：丢弃队列中最老的任务再提交被拒绝的任务。
+              - CallerRunsPolicy：将任务分配给当前执行execute方法线程来处理。
+
+          线程池状态：
+          - RUNNING：运行中，默认就是该状态
+          - SHUTDOWN：调用``shutdown``方法后处于该状态，该状态会中断所有空闲的线程（用户的任务代码不会接收到中断信号），不再接收新的任务，并继续处理队列中的任务
+          - STOP：调用``shutdownNow``方法后处于该状态，该状态会中断所有的线程，包括正在执行任务的（用户的任务代码会接收到中断信号），不再接收新的任务，清空任务队列
+          - TIDYING：当线程池中所有线程都终止了，并且任务队列为空则会处理该状态，当处于该状态后，线程池的``terminated``方法会被调用
+          - TERMINATED：``terminated``方法执行结束后处于该状态
+
+          线程池的实现简单来说就是通过核心参数控制线程池中线程的数量，每个线程在线程池中都是一个``Worker``对象，这些``Worker``对象继承自AQS（worker持有的线程执行任务时会先获取锁，通过worker锁是否被持有就能知道worker线程是否空闲），并被保存在线程池中。``Worker``类又实现了``Runnable``接口，其run方法执行一个无限循环，不断的调用``getTask``从队列中获取用户提交的``Runnable``对象并执行。``getTask``方法还会检查线程池状态，判断当前worker是否应该停止执行。
+
+          [ThreadPoolExecutor](Java/Java源码阅读/并发类/ThreadPoolExecutor.md)
+      </details>
+
       - <details><summary>ThreadLocal</summary>
 
           `ThreadLocal`的实现原理简单来说就是每个Thread对象都有一个Map：
