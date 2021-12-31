@@ -1,6 +1,6 @@
 HashMap可以接受null键值和值，但空键只有一个，且放在table[0]，HashTable不行。HashMap是线程不安全，HashTable是线程安全的，HashMap可以如下实现线程安全：Map m = Collections.synchronizeMap(hashMap); 
 
-注意key的hashCode在存入map中后变了，则get时将无法返回原来的值，可能返回null或刚好返回其他的变化后的hashCode对应的值，所以最好用不可变的类做为key如String、Integer包装类
+注意key的hashCode在存入map中后变了，则get时将无法返回原来的值，可能返回null或刚好返回其他的变化后的hashCode对应的值，所以一定要用不可变的类做为key如String、Integer包装类
 
 HashMap的实例有两个参数影响其性v能：“初始容量”和“加载因子”。容量是哈希表中桶的数量，初始容量只是哈希表在创建时的容量。加载因子是哈希表在其容量自动增加之前可以达到多满的一种尺度。当哈希表中的条目数超出了加载因子与当前容量的乘积时，则要对该哈希表进行rehash操作（即重建内部数据结构），从而哈希表将具有大约两倍的桶数，如加载因子为0.75则容量被使用75%时会rehash也就是创建一个两倍大的bucket并将原始数据复制进去，以下是JDK7的hashMap的源码阅读笔记
 

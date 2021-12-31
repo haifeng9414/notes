@@ -1,4 +1,4 @@
-Stack继承Vector，所以底层也是数组，并且支持多线程，所有实现的方法都是直接调用的Vector方法的实现
+Stack继承Vector，所以底层也是数组，并且支持多线程，所有实现的方法都是直接调用的Vector方法的实现。值得一提的是Vector删除元素是通过``System.arraycopy(elementData, index + 1, elementData, index, j)``实现的，所以删除的效率很低，另外删除后Vector容量是不变的，所以Vector的数组只是变大不会变小。
 
 ```java
 package dhf;
