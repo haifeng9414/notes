@@ -431,6 +431,9 @@
           的操作。ConcurrentHashMap在只有在put和remove等操作时才会锁住需要操作的数组元素，把锁的范围最小化了，具体
           的put和remove等过程看源码的注释
 
+          ### ConcurrentHashMap的key为什么不能是null？
+          在ConcurrentMaps (ConcurrentHashMaps, ConcurrentSkipListMaps)这些考虑并发安全的容器中不允许null值的出现的主要原因是他可能会在并发的情况下带来难以容忍的二义性。而在非并发安全的容器中，这样的问题刚好是可以解决的。在map容器里面，调用map.get(key)方法得到的值是null，那你无法判断这个key是在map里面没有映射过，还是这个key在map里面根本就不存在。这种情况下，在非并发安全的map中，你可以通过map.contains(key)的方法来判断。但是在考虑并发安全的map中，在两次调用的过程中，这个值是有可能被改变的。
+
           注意点：
           ConcurrentHashMap通过大量的cas操作避免加锁，只有在更新某个数组元素时才在该数组元素加锁
           ConcurrentHashMap的size方法不再是遍历数组获取元素大小，而是用CounterCell数组和一个baseCount一块组
@@ -487,9 +490,15 @@
           继并且tryAcquire方法返回true（由子类实现该方法），获取成功后会更新自己为头结点，所以除了初始化队列时创
           建的结点外，所有头结点都表示当前持有锁的线程结点，如果获取失败会更新自己的前驱状态为SIGNAL，表示前驱在释
           放锁的时候需要唤醒后继，之后调用LockSupport.park陷入阻塞。
-          当持有锁的线程释放锁时，如果头结点的状态为SIGNAL或者PROPAGATE（该状态的作用见setHeadAndPropagate方法），
-          会更新自己的状态为0（表示该结点已经没用了），并唤醒后继结点，后继结点从阻塞中被唤醒并重新开始循环尝试获取锁，
-          成功后更新自己为头结点。
+          当持有锁的线程释放锁时，如果头结点的状态为SIGNAL或者PROPAGATE，会更新自己的状态为0（表示该结点已经没用了），
+          并唤醒后继结点，后继结点从阻塞中被唤醒并重新开始循环尝试获取锁，成功后更新自己为头结点。
+
+          PROPAGATE状态的作用见setHeadAndPropagate方法，用于共享锁的场景，如Semaphore就是基于共享锁实现的，
+          在调用release方法新增信号量时，会唤醒头节点的next线程，该线程被唤醒后如果成功拿到了足够的信号量，会调
+          用setHeadAndPropagate方法换新后面一个节点，后一个节点也会重复这个操作，所以在拥有足够信号量的情况下，
+          所有阻塞的线程都会在调用一个release方法后拿到信号量并继续执行，可以发现共享锁的场景中不需要调用unlock，
+          因为共享锁不是独占的，每个线程拿到需要的资源后会换新后面的线程并继续执行自己的逻辑。
+
           AQS还有Condition队列，一个AQS有一个Sync队列和若干个Condition队列（一个Condition队列对应一个Condition对象），
           Condition队列是个单链表，Condition用法如下：
           
@@ -635,6 +644,8 @@
           回，表示获取锁成功；非公平锁的情况下，每个线程在尝试获取锁的时候不会考虑是否存在比他等待获取锁的时间更久
           的线程，tryAcquireShared方法直接判断剩余的许可数量是否大于需要的许可数量，如果是则利用cas更新剩余的许
           可数量并返回，表示获取锁成功，否则返回负数表示获取失败，加入Sync队列阻塞。
+
+          Semaphore默认是非公平锁。
 
           每次线程调用acquire方法，都会调用Semaphore类的内部类Sync对象的acquireSharedInterruptibly方法，该
           方法会调用tryAcquireShared方法，这将使得线程判断当前许可是否满足自己的需要，如果满足则用cas更新许可数
@@ -958,7 +969,7 @@
     - synchronized 是关键字，ReentrantLock 是 API 接口
     - ReentrantLock 需要手动加锁，手动释放锁
     - synchronized 不可中断，ReentrantLock 可中断、可超时
-    - synchronized 是非公平锁，ReentrantLock 公平、非公平皆可  ReentrantLock 支持 Condition，多条件
+    - synchronized 是非公平锁，ReentrantLock 公平、非公平皆可（默认非公平锁）。ReentrantLock 支持 多个Condition，也就是多个等待队列，而synchronized只有一个等待队列。
 
     ## synchronized锁升级过程
     Java对象在内存中的存储布局总体分为3块区域：对象头(object header)、实例数据（instance data）、和对齐填充（Padding）：
@@ -4525,6 +4536,7 @@
 
 - 消息队列
   - <details><summary>Kafka</summary>
+   
     - <details><summary>Kafka为什么那么快</summary>
 
       - Kafka的设计
@@ -4541,6 +4553,7 @@
       大量使用通道、缓冲区和页面缓存还有一个额外的好处：减少垃圾收集器的工作负载。例如，在32 GB RAM的机器上运行Kafka将产生28-30 GB的页面缓存可用空间，这部分内存不由JVM管理。通过避免垃圾回收，服务端不太可能遇到因垃圾回收引起的程序暂停，从而影响客户端，加大记录的通信延迟。
 
       </details>  
+      
     </details>  
 
 - 其他
