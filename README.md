@@ -3392,8 +3392,7 @@
         </details> 
 
     - <details><summary>Redis为什么那么快</summary>
-
-      #### 综合
+     
       1. 完全基于内存，绝大部分请求是纯粹的内存操作，非常快速
       2. 优化的数据结构：Redis有诸多可以直接应用的优化数据结构的实现，应用层可以直接使用原生的数据结构提升性能
       3. 采用单线程，避免了不必要的上下文切换和竞争条件，也不存在多进程或者多线程导致的切换而消耗CPU，不用去考虑各种锁的问题，不存在加锁释放锁操作，没有因为可能出现死锁而导致的性能消耗
@@ -3405,7 +3404,7 @@
 
       #### Redis内存不足时的淘汰策略
       1. noeviction: 当内存不足以容纳新写入数据时，新写入操作会报错。
-      2. allkeys-lru：当内存不足以容纳新写入数据时，在键空间中，移除最近最少使用的key（这个是最常用的）。
+      2. allkeys-lru：当内存不足以容纳新写入数据时，在键空间中，移除最近最少使用的key。
       3. allkeys-random：当内存不足以容纳新写入数据时，在键空间中，随机移除某个key，这个一般没人用。
       4. volatile-lru：当内存不足以容纳新写入数据时，在设置了过期时间的键空间中，移除最近最少使用的key（这个一般不太合适）。
       5. volatile-random：当内存不足以容纳新写入数据时，在设置了过期时间的键空间中，随机移除某个key。
@@ -3492,7 +3491,92 @@
         跟快照持久化可以通过设置save选项来自动执行BGSAVE一样，AOF持久化也可以通过设置auto-aof-rewrite-percentage选项和auto-aof-rewrite-min-size选项来自动执行BGREWRITEAOF。假设用户对Redis设置了配置选项auto-aof-rewrite-percentage
         100和auto-aof-rewrite-min-size 64mb，并且启用了AOF持久化，那么当AOF文件的体积大于64 MB，并且AOF文件的体积比上一次重写之后的体积大了至少一倍（100%）的时候，Redis将执行BGREWRITEAOF命令。
 
-        当对AOF进行rewrite时，首先会fork一个子进程。子进程轮询所有RedisDB快照，将所有内存数据转为cmd，并写入临时文件。在子进程rewriteaof时，主进程可以继续执行用户请求，执行完毕后将写指令写入旧的AOF文件和rewrite缓冲。子进程将RedisDB中数据落地完毕后，通知主进程。主进程从而将AOF rewrite缓冲数据写入AOF临时文件，然后用新的AOF文件替换旧的AOF文件，最后通过BIO线程异步关闭旧的AOF文件。至此，AOF的rewrite过程就全部完成了
+        当对AOF进行rewrite时，首先会fork一个子进程。子进程轮询所有RedisDB快照，将所有内存数据转为cmd，并写入临时文件。比如如果服务器对键 list 执行了以下四条命令：
+        ```
+        RPUSH list 1 2 3 4      // [1, 2, 3, 4]
+        RPOP list               // [1, 2, 3]
+        LPOP list               // [2, 3]
+        LPUSH list 1            // [1, 2, 3]
+        ```
+        那么当前列表键 list 在数据库中的值就为 [1, 2, 3] 。AOF在rewrite时不是去AOF文件上分析前面执行的四条命令，而是直接读取list键在数据库的当前值，然后用一条RPUSH 1 2 3命令来代替前面的四条命令。根据键的类型，使用适当的写入命令来重现键的当前值，这就是AOF重写的实现原理。整个重写过程可以用伪代码表示如下：
+        ```
+        def AOF_REWRITE(tmp_tile_name):
+
+        f = create(tmp_tile_name)
+
+        # 遍历所有数据库
+        for db in redisServer.db:
+
+          # 如果数据库为空，那么跳过这个数据库
+          if db.is_empty(): continue
+
+          # 写入 SELECT 命令，用于切换数据库
+          f.write_command("SELECT " + db.number)
+
+          # 遍历所有键
+          for key in db:
+
+            # 如果键带有过期时间，并且已经过期，那么跳过这个键
+            if key.have_expire_time() and key.is_expired(): continue
+
+            if key.type == String:
+
+              # 用 SET key value 命令来保存字符串键
+
+              value = get_value_from_string(key)
+
+              f.write_command("SET " + key + value)
+
+            elif key.type == List:
+
+              # 用 RPUSH key item1 item2 ... itemN 命令来保存列表键
+
+              item1, item2, ..., itemN = get_item_from_list(key)
+
+              f.write_command("RPUSH " + key + item1 + item2 + ... + itemN)
+
+            elif key.type == Set:
+
+              # 用 SADD key member1 member2 ... memberN 命令来保存集合键
+
+              member1, member2, ..., memberN = get_member_from_set(key)
+
+              f.write_command("SADD " + key + member1 + member2 + ... + memberN)
+
+            elif key.type == Hash:
+
+              # 用 HMSET key field1 value1 field2 value2 ... fieldN valueN 命令来保存哈希键
+
+              field1, value1, field2, value2, ..., fieldN, valueN =\
+              get_field_and_value_from_hash(key)
+
+              f.write_command("HMSET " + key + field1 + value1 + field2 + value2 +\
+                              ... + fieldN + valueN)
+
+            elif key.type == SortedSet:
+
+              # 用 ZADD key score1 member1 score2 member2 ... scoreN memberN
+              # 命令来保存有序集键
+
+              score1, member1, score2, member2, ..., scoreN, memberN = \
+              get_score_and_member_from_sorted_set(key)
+
+              f.write_command("ZADD " + key + score1 + member1 + score2 + member2 +\
+                              ... + scoreN + memberN)
+
+            else:
+
+              raise_type_error()
+
+            # 如果键带有过期时间，那么用 EXPIREAT key time 命令来保存键的过期时间
+            if key.have_expire_time():
+              f.write_command("EXPIREAT " + key + key.expire_time_in_unix_timestamp())
+
+          # 关闭文件
+          f.close()
+        ```
+        
+        在子进程rewriteaof时，主进程可以继续执行用户请求，执行完毕后将写指令写入旧的AOF文件和rewrite缓冲。子进程将RedisDB中数据落地完毕后，通知主进程。主进程从而将AOF rewrite缓冲数据写入AOF临时文件，然后用新的AOF文件替换旧的AOF文件，最后通过BIO线程异步关闭旧的AOF文件。至此，AOF的rewrite过程就全部完成了
 
       - 混合持久化
 
