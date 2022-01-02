@@ -3761,7 +3761,7 @@
       3. 对于每个配置纪元，集群里每个负责处理槽的主节点都有一次投票的机会，而第一个向主节点要求投票的从节点将获得主节点的投票
       4. 当从节点发现自己正在复制的主节点进入已下线状态时，从节点会向集群广播一条`CLUSTERMSG_TYPE_
       FAILOVER_AUTH_REQUEST`消息，要求所有收到这条消息、并且具有投票权的主节点向这个从节点投票
-      1. 如果一个主节点具有投票权（它正在负责处理槽），并且这个主节点尚未投票给其他从节点，那么王节点将同要求投票的从节点返回一条`CLUSTERMSG_TYPE_FAILOVER_AUTH_ACK`消息，表示这个主节点支持从节点成为新的主节点
+      1. 如果一个主节点具有投票权（它正在负责处理槽），并且这个主节点尚未投票给其他从节点，那么主节点将同要求投票的从节点返回一条`CLUSTERMSG_TYPE_FAILOVER_AUTH_ACK`消息，表示这个主节点支持从节点成为新的主节点
       2. 每个参与选举的从节点都会接收`CLUSTERMSG_TYPE_FAILOVER_AUTH_ACK`消息，并根据目己收到了多少条这种消息来统计自己获得了多少主节点的支持
       3. 如果集群里有N个具有投票权的主节点，那么当一个从节点收集到大于等于N/2+1张支持票时，这个从节点就会当选为新的主节点
       4. 因为在每一个配置纪元里面，每个具有投票权的主节点只能投一次票，所以如果有N个主节点进行投票，那么具有大于等于N/2+1张支持票的从节点只会有一个，这确保了新的主节点只会有一个
@@ -4088,7 +4088,49 @@
 
       上面的代码通过``isLeader()``方法判断是否为leader，同时线程池里的线程会循环获取锁，获取锁之后通过wait进行等待，直到被唤醒后再次尝试获取锁，业务逻辑可以在每次执行之前调用isLeader()方法判断是否为主。
 
-      redis有自己的通知机制，但是redis的通知机制采取的是发送即忘（fire and forget）策略，并不是可靠的消息机制，redis不会做消息的存储，只是在线转发，也没有ack确认机制，另外只有订阅段监听时才会转发，所以通过redis的通知机制实现分布式锁的异常丢失通知是不行的，一般的实现是在获得锁以后后台线程会定时刷新锁的ttl（需要通过cas进行刷新保证线程安全，cas可以写一个lua脚本实现，在脚本中判断currentValue和expectValue是否相等），刷新的时候如果失败则认为锁丢失了，执行丢失后的处理逻辑。
+      redis有自己的通知机制，但是redis的通知机制采取的是发送即忘（fire and forget）策略，并不是可靠的消息机制，redis不会做消息的存储，只是在线转发，也没有ack确认机制，另外只有订阅段监听时才会转发，所以通过redis的通知机制实现分布式锁的异常丢失通知是不行的，一般的实现是在获得锁以后后台线程会定时刷新锁的ttl（需要通过cas进行刷新保证线程安全，cas可以写一个lua脚本实现，在脚本中判断currentValue和expectValue是否相等），刷新的时候如果失败则认为锁丢失了，执行丢失后的处理逻辑。lua脚本的一个例子：
+      ```
+      local key = KEYS[1]
+      local expectValue = ARGV[1]
+      local pttl = tonumber(ARGV[2])
+      local newValue = ARGV[3]
+      local onlyRefreshTTL = ("true" == ARGV[4])
+      local setnx = ("true" == ARGV[5])
+      if setnx then -- setnx 直接短路掉
+          return redis.call("SET", key, newValue, "PX", pttl, "NX")
+      end
+      if pttl < 0 then -- 如果需要读 ttl 的话, 先读老 key 的 ttl
+          pttl = redis.call("PTTL", key)
+      end
+      -- 再读老 key 的值; 否则有可能出现先读到老值, 读 ttl 时 key 已过期, 造成新写入的值不会过期
+      local currentValue = redis.call("GET", key)
+      if onlyRefreshTTL then
+          newValue = currentValue
+      end
+      if currentValue == expectValue then
+          if pttl < 0 then
+              redis.call("SET", key, newValue)
+          elseif pttl == 0 then
+              redis.call("DEL", key)
+          else
+              redis.call("SET", key, newValue, "PX", pttl)
+          end
+          return true
+      else
+          return false
+      end
+      ```
+      
+      这个脚本的调用方式：
+      如果想 check and delete，可以将 ttl 传入0
+      如果想 check and refresh ttl，可以将 newValue 传入 null
+      如果想仅变更值，保持原有的 ttl，可以将 ttl 传入负值
+      如果想setnx，可以将 expectedValue 传入 null
+      ```
+      redis.evalsha(CHECK_AND_SWAP_SCRIPT_DIGEST, ScriptOutputType.BOOLEAN, new String[] {key}, expectValue,
+        String.valueOf(pttl).getBytes(), newValue, String.valueOf(onlyRefreshTTL).getBytes(),
+        String.valueOf(setnx).getBytes())
+      ```
         
       </details>
 
