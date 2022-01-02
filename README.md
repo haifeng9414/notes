@@ -1355,93 +1355,6 @@
 
     </details>
 
-- 微服务
-  - Spring Cloud
-    - <details><summary>简介</summary>
-     
-      Spring Cloud的源码主要集中在各个组建依赖的第三方工具包中，Spring相关的代码只是对这些工具包中的类的配置，利用Spring Boot Starter方便继承到微服务项目中，而Spring Boot的实现原理在[Spring Boot的笔记](https://github.com/haifeng9414/spring-boot)中已经分析过了。对于Spring Cloud用到的那些组建的源码分析，太多了，有空或者需要的时候再看吧，这里只是对Spring Cloud里常用组建的简单介绍。
-
-      </details> 
-
-    - <details><summary>注册中心-Eureka</summary>
-     
-      Spring Cloud Eureka是基于Netflix Eureka的二次封装，提供服务治理功能，实现各个微服务实例的自动化注册与发现。
-
-      Eureka通过心跳判断注册的微服务实例的可用性，不可用的服务将被剔除。Eureka有自我保护机制，如果15分钟内试跳失败的比例超过85%，则不再进行服务剔除。
-
-      </details>
-
-    - <details><summary>负载均衡-Ribbon</summary>
-     
-      Spring Cloud Ribbon是基于Netflix Ribbon的二次封装，提供REST服务调用请求的负载均衡。
-
-      Ribbon通过拦截RestTemplate对象请求的执行实现负载均衡，客户端只需要在RestTemplate对象上加上`@LoadBalanced`注解即可打开负载均衡，调用时URL的Host写成被调用的服务名称即可。
-
-      常用的负载均衡策略有：
-      1. 随机，默认策略。
-      2. 线性轮询。
-      3. 基于权重的线性轮询，该类型的策略会启动一个定时任务计算每个服务实例的权重，权重计算基于服务的响应时间。
-      4. 客户端自定义策略，自定义策略默认使用线性轮询，客户端可以继承该策略实现自己的策略。
-      5. BestAvailable，该策略继承自自定义策略类，内部维护了一个LoadBalancerStats对象保存微服务实例的统计信息，统计信息中记录了微服务实例的请求数量。BestAvailable使用请求数量最少的微服务实例作为请求实例。
-
-      </details>
-
-    - <details><summary>服务容错保护-Hystrix</summary>
-     
-      Spring Cloud Hystrix是基于Netflix Hystrix的二次封装，实现了断路器、线程隔离等服务保护功能。
-
-      使用Hystrix时在service的方法上加`@HystrixCommand`注解，注解的值设置为断路时的fallback方法名。
-
-      Hystrix使用“舱壁模式”为每个微服务类型都分配了一个专属线程池，使得不会因为某个服务的问题影响到其他服务，如果某个服务类型的线程池满了，则会执行fallback方法，也叫服务降级。
-
-      对于服务调用，Hystrix会讲调用的结果，如成功、失败、拒绝、超时等信息交由其断路器，断路器保存这些信息来决定针对某个服务，其对应的断路器是否打开，如果打开则进行服务降级。被降级后，指定时间内（默认5秒）相关请求都会被降级，指定时间后，请求将被允许执行，如果再次执行失败，则再次降级指定时间，否则关闭断路器。
-
-      </details>
-
-    - <details><summary>API网关-Zuul</summary>
-     
-      Spring Cloud Zuul是基于Netflix Zuul的二次封装，作为微服务系统的门面，实现了请求路由和请求过滤等功能。
-
-      Zuul将自己注册到Eureka，获取微服务实例，从而能够进行请求的路由，Zuul还提供了一套过滤器机制，实现读请求的校验。
-
-      </details>
-    
-- 设计模式
-  - 平时碰到的设计模式
-    - <details><summary>Spring中的设计模式</summary>
-
-      #### 介绍
-      ```
-      看Spring源码时碰到的设计模式，由于Spring源码总结是很久之前写的，所以这里只能想到啥写啥，以后有啥想到的再补充
-      ``` 
-
-      #### 建造者模式
-      BeanDefinitionBuilder类
-
-      #### 适配器模式
-      Spring AOP的代理需要MethodInterceptor类型的对象执行代理逻辑，而Spring AOP解析bean的代理配置时保存的时Advisor对象，此时就用到了适配器，在真正执行代理逻辑之前会为当前bean的所有Advisor中的Advice创建MethodInterceptor对象，而实现适配的类是AdvisorAdapter，默认实现有MethodBeforeAdviceAdapter、AfterReturningAdviceAdapter、ThrowsAdviceAdapter
-
-      另一个适配器是Spring MVC中的DispatcherServlet对象在处理请求时用到的，Spring MVC会根据请求的路径获取handler，handler可能是任意类型的，如基于注解的实现则handler为HandleMethod类型，基于XML的实现可能是AbstractController类型，此时Spring MVC会通过HandlerAdapter执行请求的处理，也算是一种适配吧，这里和常见的适配器模式不同的地方在于这里没有通过HandlerAdapter对象返回不同于handler的另一个接口类型，而是直接由HandlerAdapter对象根据handler执行请求
-
-      #### 代理模式
-      Spring AOP
-
-      #### 观察者模式
-      ApplicationContext的事件，bean实现了ApplicationListener接口会到收到ApplicationContext的不同动作对应的事件，如ContextClosedEvent、ContextRefreshedEvent、ContextStartedEvent、ContextStoppedEvent
-
-      #### 责任链模式
-      Spring AOP在真正执行代理逻辑时，会创建由MethodInterceptor组成的链，由ReflectiveMethodInvocation执行链的调用
-
-      #### 模版方法模式
-      Spring AOP中AbstractAutoProxyCreator实现了BeanPostProcessor接口，以实现创建bean时返回代理bean，其在wrapIfNecessary方法中定义了获取bean代理的基本逻辑，抽象方法如getAdvicesAndAdvisorsForBean由子类实现
-
-      Spring IOC中AbstractBeanFactory实现了创建bean的基本逻辑，子类实现containsBeanDefinition、createBean等抽象方法完成具体逻辑
-
-      #### 策略模式
-      Spring AOP中DefaultAopProxyFactory创建代理时会根据配置选择代理的实现，可选的有JdkDynamicAopProxy和ObjenesisCglibAopProxy、这两个类都实现了AopProxy接口
-
-      </details>  
-
 - JVM相关
   - 运行时区域
     - <details><summary>程序计数器</summary>
@@ -1449,7 +1362,7 @@
       程序计数器是一块较小的内存空间，它可以看作是当前线程所执行的字节码的方位指示器，字节码指示器工作时是通过改变计数器的值来选取下一条需要执行的字节码指令，分支，循环，跳转，异常处理，线程恢复等线程的基础功能都需要依赖这个程序计数器。且由于java虚拟机的多线程是通过多个线程轮流切换并分配处理器执行时间的方式来实现的，在某一时间，一个处理器只会处理一条线程，为了就是执行时间到了之后恢复到正确的执行位置，每个线程都有独立的程序计数器，各线程间运行互不影响，独立存储，我们称之为线程独有的内存，这也是唯一不会OOM的区域。
 
       </details>
-    
+      
     - <details><summary>虚拟机栈</summary>
 
       虚拟机栈也是线程独有的空间，他的生命周期与线程相同。虚拟机栈描述的是java方法执行的内存模型：即是每个方法执行的时候都会创建一个栈帧用于存储方法相关的数据，如局部变量表，操作数栈，动态链接，方法出口等方法的相关信息。每一个方法执行开始到结束的过程，都对应者一个栈帧在虚拟机栈中入栈到出栈的过程。局部变量里存储java的各种基本类型，对象引用以及返回类型。该区域可能有两种异常，如果线程请求的栈深度大于虚拟机所允许的深度（通过-Xss设置虚拟机栈的内存大小限制，这里说的栈深度，实际上就是栈内存大小的意思），则抛出StackOverflowError，另一个异常是OutOfMemoryError：虚拟机栈占用的是物理内存（由操作系统管理），而不是堆内存，当栈深底变大时会向操作系统申请物理内存，其上限就是可用物理内存的上限，如果物理内存没有足够的可用内存分配给虚拟机栈，则抛出OutOfMemoryError
@@ -1461,7 +1374,7 @@
       本地方法栈与虚拟机栈作用相似。只不过虚拟机栈执行的是java方法，而本地方法栈执行的是Native方法，即本地方法，他也是线程独有的。
 
       </details>
-    
+      
     - <details><summary>堆</summary>
 
       堆是虚拟机中内存最大的一块，且是所有线程共享的区域，里面只存储对象实例，几乎所有的对象都是在该区域分配对象实例内存。该区域为每一个线程都创建了分配缓冲区（Thread Local Allocation Buffer，TLAB），多线程的情况下在堆中申请内存是不安全的，所以每个线程都单独分配一个内存块，线程申请内存时在自己的空间上分配，这样就不存在竞争的情况，TLAB用满，就新申请一个TLAB（利用cas申请）。配置java堆的大小命令由-Xmx（最大堆大小）和-Xms（初始堆大小）控制
@@ -1548,7 +1461,7 @@
       - 主动式中断
       主动式中断在GC的时候，不会主动去中断线程，仅仅是设置一个标志，当线程运行到安全点时就去轮训该位置，发现该位置被设置为真时就自己中断挂起。另外创建对象需要分配内存的地方也需要轮询该位置。
       安全点的使用似乎解决了OopMap计算的效率的问题，但是这里还有一个问题。安全点需要程序自己跑过去，那么对于那些已经停在路边休息或者看风景的程序（比如那些处在Sleep或者Blocked状态的线程），他们可能并不会在很短的时间内跑到安全点去。所以这里为了解决这个问题，又引入了安全区域的概念
-      
+        
       ### 安全区域（Safe Region）
       在程序的一段代码片段中并不会导致引用关系发生变化，也就不用去更新OopMap表了，那么在这段代码区域内任何地方进行GC都是没有问题的。这段区域就称之为安全区域。线程执行的过程中，如果进入到安全区域内，就会标志自己已经进行到安全区域了。那么虚拟机要进行GC的时候，发现该线程已经运行到安全区域，就不会管该线程的死活了。所以，该线程在脱离安全区域的时候，要自己检查系统是否已经完成了GC或者根节点枚举（这个跟GC的算法有关系），如果完成了就继续执行，如果未完成，它就必须等待收到可以安全离开安全区域的信号为止。
 
@@ -1563,7 +1476,7 @@
       </details>
 
     - <details><summary>垃圾回收器</summary>
-      
+        
       - <details><summary>Serial收集器</summary>
 
         Serial收集器是最基本、发展历史最悠久的收集器，曾经（在JDK1.3.1之前）是虚拟机新生代收集的唯一选择。这个收集器是一个单线程的收集器，但它的“单线程”的意义并不仅仅说明它只会使用一个CPU或一条收集线程去完成垃圾收集工作，更重要的是在它进行垃圾收集时，必须暂停其他所有的工作线程，直到它收集结束。"Stop The World"这个名字也许听起来很酷，但这项工作实际上是由虚拟机在后台自动发起和自动完成的，在用户不可见的情况下把用户正常工作的线程全部停掉，这对很多应用来说都是难以接受的。
@@ -1633,7 +1546,7 @@
         由于CMS采用标记-清除算法，所以会产生很多空间碎片，为了解决这个问题，CMS收集器提供了一个-XX:+UseCMSCompactAtFullCollection开关参数（默认就是开启的），用于在CMS收集器顶不住要进行Full GC时开启内存碎片的合并整理过程，内存整理的过程是无法并发的，空间碎片问题没有了，但停顿时间不得不变长。虚拟机设计者还提供了另外一个参数-XX:CMSFullGCsBeforeCompaction，这个参数是用于设置执行多少次不压缩的Full GC后，跟着来一次带压缩的（默认值为0，表示每次进入Full GC时都进行碎片整理）。
 
         假设你的堆小于4G，而你又希望分配更多的CPU资源给垃圾回收器以避免应用暂停，那么这就是你要选择的回收器，如果堆大于4G的话，应该使用G1回收器
-         
+           
         老年代标记-清除算法
 
         </details>
@@ -1676,7 +1589,7 @@
         |-XX:MaxGCPauseMillis|设置G1收集过程目标时间，默认值200ms|
         |-XX:G1NewSizePercent|新生代最小值，默认值5%|
         |-XX:G1MaxNewSizePercent|新生代最大值，默认值60%|
-        
+          
         #### mixed gc
         当越来越多的对象晋升到老年代old region时，为了避免堆内存被耗尽，虚拟机会触发一个混合的垃圾收集器，即mixed gc，该算法并不是一个old gc，除了回收整个young region，还会回收一部分的old region，这里需要注意：是一部分老年代，而不是全部老年代，可以选择哪些old region进行收集（G1会跟踪各个Region回收所需的空间大小和时间维护一个优先列表，在GC时先按列表优先顺序回收），从而可以对垃圾回收的耗时时间进行控制。那么mixed gc什么时候被触发？
         先回顾一下cms的触发机制，如果添加了以下参数：
@@ -1767,7 +1680,7 @@
       MTT ： 最大持有次数限制
       ```
       </details>
-  
+    
     - <details><summary>CPU飙高的基本操作</summary>
 
       1. 通过top命令找到CPU消耗最高的Java进程，并记住进程ID
@@ -1775,7 +1688,7 @@
       3. 通过JDK提供的jstack工具打印出线程堆栈信息到指定文件中，具体命令：jstack -l [进程 ID] > jstack.log
       4. 由于刚刚的线程ID是十进制的，而堆栈信息中的线程ID是16进制的，因此我们需要将10进制的转换成16进制的，并用这个线程ID在堆栈中查找。使用printf "%x\n" [十进制数字]，可以将10进制转换成16进制
       5. 通过刚刚转换的16进制数字从堆栈信息里找到对应的线程堆栈，就可以从该堆栈中看出端倪
-       
+         
       </details>
 
     - <details><summary>内存问题排查</summary>
@@ -1836,7 +1749,7 @@
       [gc,cpu ] GC(533239) User=0.30s Sys=0.20s Real=0.07s
       ```
       User表示各GC线程工作时间，Sys表示进入内核态时间，Real是真实度过的时间，和上面的69.378ms对应
-      
+        
       G1期望控制每次GC STW时间在一定范围内，但如果出现了Full GC，那么总是不可避免的迎来秒级STW，这对很多线上应用都是难以接受的。
       发生Full GC，日志里会出现Pause Full，首先我们可以看一下Full GC的回收效果，经过Full GC后内存是否得到了有效回收，如果大部分内存回收不掉，那么问题比较好定位，应该是哪里“漏”了，借助heapdump分析即可。
       如果内存都能够正常回收，就需要多问几个问题了：Full GC触发原因是什么？会不会是metaspace满了？是不是业务代码主动调用了Full GC之前是否有To-space exhausted现象？根据触发原因的不同，排查的方向也应该跟着触发原因走。
@@ -1896,7 +1809,7 @@
 
       依赖静态类型来定位方法的执行版本的分派动作称为静态分派
       </details>
-      
+        
     - <details><summary>动态分派</summary>
 
         动态分派和重写有很密切的关联。虚拟机通过对象的实际类型分派重写方法的执行版本，使用的是invokevirtual指令实现多态，
@@ -1913,6 +1826,94 @@
 
         方法表一般在类加载的连接阶段初始化。
       </details>
+
+- 微服务
+  - Spring Cloud
+    - <details><summary>简介</summary>
+     
+      Spring Cloud的源码主要集中在各个组建依赖的第三方工具包中，Spring相关的代码只是对这些工具包中的类的配置，利用Spring Boot Starter方便继承到微服务项目中，而Spring Boot的实现原理在[Spring Boot的笔记](https://github.com/haifeng9414/spring-boot)中已经分析过了。对于Spring Cloud用到的那些组建的源码分析，太多了，有空或者需要的时候再看吧，这里只是对Spring Cloud里常用组建的简单介绍。
+
+      </details> 
+
+    - <details><summary>注册中心-Eureka</summary>
+     
+      Spring Cloud Eureka是基于Netflix Eureka的二次封装，提供服务治理功能，实现各个微服务实例的自动化注册与发现。
+
+      Eureka通过心跳判断注册的微服务实例的可用性，不可用的服务将被剔除。Eureka有自我保护机制，如果15分钟内试跳失败的比例超过85%，则不再进行服务剔除。
+
+      </details>
+
+    - <details><summary>负载均衡-Ribbon</summary>
+     
+      Spring Cloud Ribbon是基于Netflix Ribbon的二次封装，提供REST服务调用请求的负载均衡。
+
+      Ribbon通过拦截RestTemplate对象请求的执行实现负载均衡，客户端只需要在RestTemplate对象上加上`@LoadBalanced`注解即可打开负载均衡，调用时URL的Host写成被调用的服务名称即可。
+
+      常用的负载均衡策略有：
+      1. 随机，默认策略。
+      2. 线性轮询。
+      3. 基于权重的线性轮询，该类型的策略会启动一个定时任务计算每个服务实例的权重，权重计算基于服务的响应时间。
+      4. 客户端自定义策略，自定义策略默认使用线性轮询，客户端可以继承该策略实现自己的策略。
+      5. BestAvailable，该策略继承自自定义策略类，内部维护了一个LoadBalancerStats对象保存微服务实例的统计信息，统计信息中记录了微服务实例的请求数量。BestAvailable使用请求数量最少的微服务实例作为请求实例。
+
+      </details>
+
+    - <details><summary>服务容错保护-Hystrix</summary>
+     
+      Spring Cloud Hystrix是基于Netflix Hystrix的二次封装，实现了断路器、线程隔离等服务保护功能。
+
+      使用Hystrix时在service的方法上加`@HystrixCommand`注解，注解的值设置为断路时的fallback方法名。
+
+      Hystrix使用“舱壁模式”为每个微服务类型都分配了一个专属线程池，使得不会因为某个服务的问题影响到其他服务，如果某个服务类型的线程池满了，则会执行fallback方法，也叫服务降级。
+
+      对于服务调用，Hystrix会讲调用的结果，如成功、失败、拒绝、超时等信息交由其断路器，断路器保存这些信息来决定针对某个服务，其对应的断路器是否打开，如果打开则进行服务降级。被降级后，指定时间内（默认5秒）相关请求都会被降级，指定时间后，请求将被允许执行，如果再次执行失败，则再次降级指定时间，否则关闭断路器。
+
+      </details>
+
+    - <details><summary>API网关-Zuul</summary>
+     
+      Spring Cloud Zuul是基于Netflix Zuul的二次封装，作为微服务系统的门面，实现了请求路由和请求过滤等功能。
+
+      Zuul将自己注册到Eureka，获取微服务实例，从而能够进行请求的路由，Zuul还提供了一套过滤器机制，实现读请求的校验。
+
+      </details>
+    
+- 设计模式
+  - 平时碰到的设计模式
+    - <details><summary>Spring中的设计模式</summary>
+
+      #### 介绍
+      ```
+      看Spring源码时碰到的设计模式，由于Spring源码总结是很久之前写的，所以这里只能想到啥写啥，以后有啥想到的再补充
+      ``` 
+
+      #### 建造者模式
+      BeanDefinitionBuilder类
+
+      #### 适配器模式
+      Spring AOP的代理需要MethodInterceptor类型的对象执行代理逻辑，而Spring AOP解析bean的代理配置时保存的时Advisor对象，此时就用到了适配器，在真正执行代理逻辑之前会为当前bean的所有Advisor中的Advice创建MethodInterceptor对象，而实现适配的类是AdvisorAdapter，默认实现有MethodBeforeAdviceAdapter、AfterReturningAdviceAdapter、ThrowsAdviceAdapter
+
+      另一个适配器是Spring MVC中的DispatcherServlet对象在处理请求时用到的，Spring MVC会根据请求的路径获取handler，handler可能是任意类型的，如基于注解的实现则handler为HandleMethod类型，基于XML的实现可能是AbstractController类型，此时Spring MVC会通过HandlerAdapter执行请求的处理，也算是一种适配吧，这里和常见的适配器模式不同的地方在于这里没有通过HandlerAdapter对象返回不同于handler的另一个接口类型，而是直接由HandlerAdapter对象根据handler执行请求
+
+      #### 代理模式
+      Spring AOP
+
+      #### 观察者模式
+      ApplicationContext的事件，bean实现了ApplicationListener接口会到收到ApplicationContext的不同动作对应的事件，如ContextClosedEvent、ContextRefreshedEvent、ContextStartedEvent、ContextStoppedEvent
+
+      #### 责任链模式
+      Spring AOP在真正执行代理逻辑时，会创建由MethodInterceptor组成的链，由ReflectiveMethodInvocation执行链的调用
+
+      #### 模版方法模式
+      Spring AOP中AbstractAutoProxyCreator实现了BeanPostProcessor接口，以实现创建bean时返回代理bean，其在wrapIfNecessary方法中定义了获取bean代理的基本逻辑，抽象方法如getAdvicesAndAdvisorsForBean由子类实现
+
+      Spring IOC中AbstractBeanFactory实现了创建bean的基本逻辑，子类实现containsBeanDefinition、createBean等抽象方法完成具体逻辑
+
+      #### 策略模式
+      Spring AOP中DefaultAopProxyFactory创建代理时会根据配置选择代理的实现，可选的有JdkDynamicAopProxy和ObjenesisCglibAopProxy、这两个类都实现了AopProxy接口
+
+      </details>  
+
 
 - 网络
   - HTTPS和HTTP
