@@ -3217,6 +3217,7 @@
 
   - Redis
     - <details><summary>Redis数据结构</summary>
+     
         #### SDS
         Redis是用C语言开发完成的，但在Redis字符串中，并没有使用C语言中的字符串，而是用一种称为SDS（Simple Dynamic String）的结构体来保存字符串，Sds 在 Redis 中的主要作用有以下两个：
         - 实现字符串对象（StringObject）；
@@ -3818,6 +3819,8 @@
       此时对象Object A、B、D不受影响，只有对象C需要重定位到新的Node X。一般的，在一致性哈希算法中，如果增加一台服务器，则受影响的数据仅仅是新服务器到其环空间中前一台服务器（即沿着逆时针方向行走遇到的第一台服务器）之间数据，其它数据也不会受到影响。
 
       综上所述，一致性哈希算法对于节点的增减都只需重定位环空间中的一小部分数据，具有较好的容错性和可扩展性。
+
+      [一致性hash](https://mp.weixin.qq.com/s/cekUmNmH-UYfsITb7hxWOQ)
 
       ### Hash环的数据倾斜问题
         
