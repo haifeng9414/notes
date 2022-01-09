@@ -484,7 +484,7 @@
           ```
           AbstractQueuedSynchronizer实现了JUC包下工具类的基础框架，是Java并发编程最重要的类之一，实现原理参
           考了CLH Lock。AbstractQueuedSynchronizer的实现原理是：
-          维护一个双向队列，也就是Sync队列，初始情况下队列为空，每个线程在尝试获取锁之前都会创建一个代表自己的结点
+          维护一个双向队列，也就是Sync队列，初始情况下队列为空，每个线程在尝试获取锁失败之后都会创建一个代表自己的结点
           并入队，第一个结点入队时队列为空，此时会额外创建一个头结点，使得第一个入队的线程结点为头结点的后继，对于
           之后入队的结点，添加到队列尾。所有结点在无限循环中不断尝试获取锁，成功获取锁的条件是线程结点为头结点的后
           继并且tryAcquire方法返回true（由子类实现该方法），获取成功后会更新自己为头结点，所以除了初始化队列时创
@@ -1482,6 +1482,15 @@
       </details>
 
   - 垃圾回收器
+    - <details><summary>GC root有哪些</summary>
+
+      - 虚拟机栈（栈帧中的本地变量表）中引用的对象
+      - 本地方法栈中 JNI（即一般说的 Native 方法）引用的对象
+      - 类静态属性引用的对象
+      - 常量引用的对象
+
+      </details>
+
     - <details><summary>垃圾回收器之间的搭配</summary>
 
       下面展示了7种作用于不同分代的收集器，如果两个收集器之间存在连线，就说明它们可以搭配使用。虚拟机所处的区域，则表示它是属于新生代收集器还是老年代收集器。
@@ -1840,95 +1849,7 @@
 
         方法表一般在类加载的连接阶段初始化。
       </details>
-
-- 微服务
-  - Spring Cloud
-    - <details><summary>简介</summary>
-     
-      Spring Cloud的源码主要集中在各个组建依赖的第三方工具包中，Spring相关的代码只是对这些工具包中的类的配置，利用Spring Boot Starter方便继承到微服务项目中，而Spring Boot的实现原理在[Spring Boot的笔记](https://github.com/haifeng9414/spring-boot)中已经分析过了。对于Spring Cloud用到的那些组建的源码分析，太多了，有空或者需要的时候再看吧，这里只是对Spring Cloud里常用组建的简单介绍。
-
-      </details> 
-
-    - <details><summary>注册中心-Eureka</summary>
-     
-      Spring Cloud Eureka是基于Netflix Eureka的二次封装，提供服务治理功能，实现各个微服务实例的自动化注册与发现。
-
-      Eureka通过心跳判断注册的微服务实例的可用性，不可用的服务将被剔除。Eureka有自我保护机制，如果15分钟内试跳失败的比例超过85%，则不再进行服务剔除。
-
-      </details>
-
-    - <details><summary>负载均衡-Ribbon</summary>
-     
-      Spring Cloud Ribbon是基于Netflix Ribbon的二次封装，提供REST服务调用请求的负载均衡。
-
-      Ribbon通过拦截RestTemplate对象请求的执行实现负载均衡，客户端只需要在RestTemplate对象上加上`@LoadBalanced`注解即可打开负载均衡，调用时URL的Host写成被调用的服务名称即可。
-
-      常用的负载均衡策略有：
-      1. 随机，默认策略。
-      2. 线性轮询。
-      3. 基于权重的线性轮询，该类型的策略会启动一个定时任务计算每个服务实例的权重，权重计算基于服务的响应时间。
-      4. 客户端自定义策略，自定义策略默认使用线性轮询，客户端可以继承该策略实现自己的策略。
-      5. BestAvailable，该策略继承自自定义策略类，内部维护了一个LoadBalancerStats对象保存微服务实例的统计信息，统计信息中记录了微服务实例的请求数量。BestAvailable使用请求数量最少的微服务实例作为请求实例。
-
-      </details>
-
-    - <details><summary>服务容错保护-Hystrix</summary>
-     
-      Spring Cloud Hystrix是基于Netflix Hystrix的二次封装，实现了断路器、线程隔离等服务保护功能。
-
-      使用Hystrix时在service的方法上加`@HystrixCommand`注解，注解的值设置为断路时的fallback方法名。
-
-      Hystrix使用“舱壁模式”为每个微服务类型都分配了一个专属线程池，使得不会因为某个服务的问题影响到其他服务，如果某个服务类型的线程池满了，则会执行fallback方法，也叫服务降级。
-
-      对于服务调用，Hystrix会讲调用的结果，如成功、失败、拒绝、超时等信息交由其断路器，断路器保存这些信息来决定针对某个服务，其对应的断路器是否打开，如果打开则进行服务降级。被降级后，指定时间内（默认5秒）相关请求都会被降级，指定时间后，请求将被允许执行，如果再次执行失败，则再次降级指定时间，否则关闭断路器。
-
-      </details>
-
-    - <details><summary>API网关-Zuul</summary>
-     
-      Spring Cloud Zuul是基于Netflix Zuul的二次封装，作为微服务系统的门面，实现了请求路由和请求过滤等功能。
-
-      Zuul将自己注册到Eureka，获取微服务实例，从而能够进行请求的路由，Zuul还提供了一套过滤器机制，实现读请求的校验。
-
-      </details>
     
-- 设计模式
-  - 平时碰到的设计模式
-    - <details><summary>Spring中的设计模式</summary>
-
-      #### 介绍
-      ```
-      看Spring源码时碰到的设计模式，由于Spring源码总结是很久之前写的，所以这里只能想到啥写啥，以后有啥想到的再补充
-      ``` 
-
-      #### 建造者模式
-      BeanDefinitionBuilder类
-
-      #### 适配器模式
-      Spring AOP的代理需要MethodInterceptor类型的对象执行代理逻辑，而Spring AOP解析bean的代理配置时保存的时Advisor对象，此时就用到了适配器，在真正执行代理逻辑之前会为当前bean的所有Advisor中的Advice创建MethodInterceptor对象，而实现适配的类是AdvisorAdapter，默认实现有MethodBeforeAdviceAdapter、AfterReturningAdviceAdapter、ThrowsAdviceAdapter
-
-      另一个适配器是Spring MVC中的DispatcherServlet对象在处理请求时用到的，Spring MVC会根据请求的路径获取handler，handler可能是任意类型的，如基于注解的实现则handler为HandleMethod类型，基于XML的实现可能是AbstractController类型，此时Spring MVC会通过HandlerAdapter执行请求的处理，也算是一种适配吧，这里和常见的适配器模式不同的地方在于这里没有通过HandlerAdapter对象返回不同于handler的另一个接口类型，而是直接由HandlerAdapter对象根据handler执行请求
-
-      #### 代理模式
-      Spring AOP
-
-      #### 观察者模式
-      ApplicationContext的事件，bean实现了ApplicationListener接口会到收到ApplicationContext的不同动作对应的事件，如ContextClosedEvent、ContextRefreshedEvent、ContextStartedEvent、ContextStoppedEvent
-
-      #### 责任链模式
-      Spring AOP在真正执行代理逻辑时，会创建由MethodInterceptor组成的链，由ReflectiveMethodInvocation执行链的调用
-
-      #### 模版方法模式
-      Spring AOP中AbstractAutoProxyCreator实现了BeanPostProcessor接口，以实现创建bean时返回代理bean，其在wrapIfNecessary方法中定义了获取bean代理的基本逻辑，抽象方法如getAdvicesAndAdvisorsForBean由子类实现
-
-      Spring IOC中AbstractBeanFactory实现了创建bean的基本逻辑，子类实现containsBeanDefinition、createBean等抽象方法完成具体逻辑
-
-      #### 策略模式
-      Spring AOP中DefaultAopProxyFactory创建代理时会根据配置选择代理的实现，可选的有JdkDynamicAopProxy和ObjenesisCglibAopProxy、这两个类都实现了AopProxy接口
-
-      </details>  
-
-
 - 网络
   - HTTPS和HTTP
     - <details><summary>状态代码</summary>
@@ -2243,6 +2164,33 @@
 
           [如何理解关系型数据库的常见设计范式？ - 刘慰的回答 - 知乎](https://www.zhihu.com/question/24696366/answer/29189700)
           </details>
+
+    - <details><summary>MySQL语句执行过程</summary>
+
+        大概过程：
+        - 查询缓存：先检查查询缓存，如果命中了缓存，则立刻返回存储在缓存中的结果。否则进入下一阶段。
+        - 分析器：进行SQL解析、词法分析。
+        - 优化器：比如判断使用哪种索引，使用何种连接
+        - 执行计划：通过存储引擎执行SQL
+        - 将结果返回给客户端。
+
+        ### 查询缓存
+        MySQL查询缓存保存查询返回的完整结构。当查询命中该缓存时，MySQL会立刻返回结果，跳过了解析、优化和执行阶段。 查询缓存系统会跟踪查询中涉及的每个表，如果这些表发生了变化，那么和这个表相关的所有缓存数据都将失效。
+
+        MySQL将缓存存放在一个引用表中，通过一个哈希值引用，这个哈希值包括了以下因素，即查询本身、当前要查询的数据库、客户端协议的版本等一些其他可能影响返回结果的信息。
+
+        当查询语句中有一些不确定的数据时，则不会被缓存。例如包含函数NOW()或者CURRENT_DATE()的查询不会缓存。包含任何用户自定义函数，存储函数，用户变量，临时表，mysql数据库中的系统表都不会被缓存。
+
+        ### 分析器：解析和预处理
+        解析器通过关键字将SQL语句进行解析，并生成对应的解析树。MySQL解析器将使用MySQL语法规则验证和解析查询。预处理器则根据一些MySQL规则进行进一步检查解析树是否合法，例如检查数据表和数据列是否存在，还会解析名字和别名，看看它们是否有歧义。
+
+        ### 优化器
+        优化器会将解析树转化成执行计划。一条查询可以有多种执行方法，最后都是返回相同结果。优化器的作用就是找到这其中最好的执行计划。
+
+        ### 执行计划
+        首先会判断有没有执行这条语句的权限，没有权限的话，就会返回没有权限的错误。如果有权限，就打开表继续执行。打开表的时候，执行器就会根据表的引擎定义，去使用这个引擎提供的接口。
+
+        </details>
 
     - 隔离级别
       - <details><summary>有哪些隔离级别</summary>
