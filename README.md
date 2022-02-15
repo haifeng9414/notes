@@ -22,6 +22,13 @@
           如多个线程put时找到了同一个数组元素，都想要将自己的值置于原数组元素的next指针位置，则可能某个线程执行next赋值时就将其他线程刚赋值的元素给覆盖了
 
           另外，HashMap-JDK8没有任何并发限制，所以在resize时由于数组的状态还不确定，此时get和put的结果都是不确定的，可能get操作时获取到的是null，实际上是有值的，只不过正在resize，值还未归位
+
+          红黑树的性质：
+          - 每个结点要么是红的，要么是黑的。
+          - 根结点是黑的。
+          - 每个叶结点（叶结点即指树尾端NIL指针或NULL结点）是黑的。
+          - 如果一个结点是红的，那么它的俩个儿子都是黑的。
+          - 对于任一结点而言，其到叶结点NIL指针的每一条路径都包含相同数目的黑结点。
   
           源码分析：[HashMap-JDK8](Java/Java源码阅读/集合类/HashMap-JDK8.md)
         </details>
@@ -66,90 +73,112 @@
 
           如果不使用LinkedHashMap，实现LRU也很简单：
           ```java
-          class LRUCache {
-              private Node head;
-              private Node tail;
-              private Map<Integer, Node> map;
-              private int cap;
+          public class LRUCache {
+              private class Node {
+                  private Integer key;
+                  private Integer value;
+                  private Node prev;
+                  private Node next;
 
-              private LRUCache(int capacity) {
-                  this.cap = capacity;
-                  this.map = new HashMap<>();
-              }
-
-              private int get(int key) {
-                  if (map.get(key) == null) {
-                      return -1;
-                  }
-
-                  Node t = map.get(key);
-
-                  removeNode(t);
-                  offerNode(t);
-
-                  return t.value;
-              }
-
-              private void put(int key, int value) {
-                  if (map.containsKey(key)) {
-                      Node t = map.get(key);
-                      t.value = value;
-
-                      //move to tail
-                      removeNode(t);
-                      offerNode(t);
-                  } else {
-                      if (map.size() >= cap) {
-                          //delete head
-                          map.remove(head.key);
-                          removeNode(head);
-                      }
-
-                      //add to tail
-                      Node node = new Node(key, value);
-                      offerNode(node);
-                      map.put(key, node);
-                  }
-              }
-
-              private void removeNode(Node n) {
-                  if (n.prev != null) {
-                      n.prev.next = n.next;
-                  } else {
-                      head = n.next;
-                  }
-
-                  if (n.next != null) {
-                      n.next.prev = n.prev;
-                  } else {
-                      tail = n.prev;
-                  }
-              }
-
-              private void offerNode(Node n) {
-                  if (tail != null) {
-                      tail.next = n;
-                  }
-
-                  n.prev = tail;
-                  n.next = null;
-                  tail = n;
-
-                  if (head == null) {
-                      head = tail;
-                  }
-              }
-
-              static class Node {
-                  int key;
-                  int value;
-                  Node prev;
-                  Node next;
-
-                  private Node(int key, int value) {
+                  public Node(Integer key, Integer value) {
                       this.key = key;
                       this.value = value;
                   }
+              }
+
+              private class DoubleList {
+                  private Node head;
+                  private Node tail;
+                  private int size;
+
+                  public DoubleList() {
+                      head = new Node(-1, -1);
+                      tail = new Node(-1, -1);
+                      head.next = tail;
+                      tail.prev = head;
+                      size = 0;
+                  }
+
+                  private void addLast(Node node) {
+                      node.next = tail;
+                      node.prev = tail.prev;
+                      tail.prev.next = node;
+                      tail.prev = node;
+                      size++;
+                  }
+
+                  private void remove(Node node) {
+                      node.prev.next = node.next;
+                      node.next.prev = node.prev;
+                      size--;
+                  }
+
+                  private Node removeFirst() {
+                      if (head.next == tail) {
+                          return null;
+                      }
+
+                      final Node first = head.next;
+                      remove(first);
+                      return first;
+                  }
+              }
+
+              private DoubleList doubleList = new DoubleList();
+              private Map<Integer, Node> cache = new HashMap<>();
+              private int capacity;
+
+              public LRUCache(int capacity) {
+                  this.capacity = capacity;
+              }
+
+              private void put(int key, int value) {
+                  if (cache.containsKey(key)) {
+                      // 删除旧的数据
+                      deleteKey(key);
+                      // 新插入的数据为最近使用的数据
+                      addRecently(key, value);
+                      return;
+                  }
+
+                  if (doubleList.size == capacity) {
+                      removeLeastRecently();
+                  }
+
+                  // 添加为最近使用的元素
+                  addRecently(key, value);
+              }
+
+              private int get(int key) {
+                  if (!cache.containsKey(key)) {
+                      return -1;
+                  }
+
+                  makeRecently(key);
+                  return cache.get(key).value;
+              }
+
+              private void makeRecently(int key) {
+                  final Node node = cache.get(key);
+                  doubleList.remove(node);
+                  doubleList.addLast(node);
+              }
+
+              private void removeLeastRecently() {
+                  final Node node = doubleList.removeFirst();
+                  cache.remove(node.key);
+              }
+
+              private void addRecently(int key, int value) {
+                  final Node node = new Node(key, value);
+                  doubleList.addLast(node);
+                  cache.put(key, node);
+              }
+
+              private void deleteKey(int key) {
+                  final Node node = cache.get(key);
+                  doubleList.remove(node);
+                  cache.remove(key);
               }
 
               public static void main(String[] args) {
@@ -970,8 +999,9 @@
     ## synchronized、ReentrantLock的区别
     - synchronized 是关键字，ReentrantLock 是 API 接口
     - ReentrantLock 需要手动加锁，手动释放锁
-    - synchronized 不可中断，ReentrantLock 可中断、可超时
+    - synchronized 不可中断，ReentrantLock的lock方法不可中断、可超时，但是有可中断、可超时的lock方法，即lockInterruptibly
     - synchronized 是非公平锁，ReentrantLock 公平、非公平皆可（默认非公平锁）。ReentrantLock 支持 多个Condition，也就是多个等待队列，而synchronized只有一个等待队列。
+    - synchronized 有个锁升级过程，所以某些情况下synchronized的性能可能更好
 
     ## synchronized锁升级过程
     Java对象在内存中的存储布局总体分为3块区域：对象头(object header)、实例数据（instance data）、和对齐填充（Padding）：
@@ -2361,12 +2391,18 @@
         - 先写binlog后写redo log。如果在binlog写完之后crash，由于redo log还没写，崩溃恢复以后这个事务无效，所以这一行c的值是0。但是binlog里面已经记录了c从0改成1这个日志。所以在之后用binlog来恢复的时候就多了一个事务出来，恢复出来的这一行c的值就是1，与原库的值不同。
 
         有了两阶段提交后是如何解决上面的问题呢？还是上面的例子，一条更新语句的执行过程如下：
-        ![redo_log2](resources/redo%20log2.png) 
+        ![redo_log2](resources/redolog2.png) 
 
         - 如果在图中时刻A，也就是写入redo log处于prepare阶段之后,写binlog之前，发生了崩溃，由于此时binlog还没写，redo log也还没提交，所以崩溃恢复的时候，这个事务会回滚。这时候，binlog还没写，所以也不会传到备库。
         - 如果奔溃发生在时刻B，也就是binlog写完，redo log还没commit前发生crash，那么会如下处理：
           - 如果redo log里面的事务是完整的，也就是已经有了commit标识，则直接提交；
           - 如果redo log里面的事务只有完整的prepare，则判断对应的事务binlog是否存在并完整，如果是，则提交事务，否则回滚事务。
+
+        binlog的格式也有三种：
+        STATEMENT（默认）：每一条会修改数据的sql都会记录到master的bin-log中。slave在复制的时候sql进程会解析成和原来master端执行过的相同的sql来再次执行。优点：解决了row level下的缺点，不需要记录每一行数据的变化，减少binlog日志量，节约IO，提高性能，因为它只需要执行的语句的细节，以及执行语句的上下文的信息。缺点：由于只记录语句，所以，在statement level下已经发现了有不少情况会造成MySQL的复制出现问题，主要是修改数据的时候使用了某些定的函数或者功能的时候会出现。
+        - ROW：在row level模式下，bin-log中可以不记录执行的sql语句的上下文相关的信息，仅仅只需要记录哪一条被修改。所以rowlevel的日志内容会非常清楚的记录下每一行数据修改的细节。不会出现某些特定的情况下的存储过程或function，以及trigger的调用和触发无法被正确复制的问题。缺点：row level，所有的执行的语句当记录到日志中的时候，都将以每行记录的修改来记录，会产生大量的日志内容。
+        MIXED：在Mixed模式下，MySQL会根据执行的每一条具体的sql语句来区分对待记录的日志格式，也就是在Statement和Row之间选择一种。如果sql语句确实就是update或者delete等修改数据的语句，那么还是会记录所有行的变更。
+
         - MySQL的undo log和redo log一样，作用都是恢复数据，只不过针对的数据不一样。undo log能够回滚行记录到某个特定版本，redo log恢复提交的事务修改的页的操作。undo log记录的是逻辑日志，一个事务中每个insert操作，都会有一个对应的delete记录，每个delete操作，都会有一个对应的insert记录，每个update操作，都会有一个相反的update记录，事务的回滚就是通过undo log完成的。undo log的另一个用处的支持MVCC
 
       </details>
@@ -3697,8 +3733,27 @@
      
       1. 完全基于内存，绝大部分请求是纯粹的内存操作，非常快速
       2. 优化的数据结构：Redis有诸多可以直接应用的优化数据结构的实现，应用层可以直接使用原生的数据结构提升性能
-      3. 采用单线程，避免了不必要的上下文切换和竞争条件，也不存在多进程或者多线程导致的切换而消耗CPU，不用去考虑各种锁的问题，不存在加锁释放锁操作，没有因为可能出现死锁而导致的性能消耗
+      3. 采用单线程，避免了不必要的上下文切换和竞争条件，也不存在多进程或者多线程导致的切换而消耗CPU，不用去考虑各种锁的问题，不存在加锁释放锁操作，没有因为可能出现死锁而导致的性能消耗。
       4. 使用多路I/O复用模型，非阻塞IO
+
+      目前所说的Redis单线程，指的是”其网络IO和键值对读写是由一个线程完成的“，也就是说，Redis中只有网络请求模块和数据操作模块是单线程的。而其他的如持久化存储模块、集群支撑模块等是多线程的。所以说，Redis中并不是没有多线程模型的，早在Redis 4.0的时候就已经针对部分命令做了多线程化。主要是体现在大数据的异步删除功能上，例如unlink key、flushdb async、flushall async等。
+
+      那么，为什么网络操作模块和数据存储模块最初并没有使用多线程呢？这个问题的答案比较简单！因为没必要！一个计算机程序在执行的过程中，主要需要进行两种操作分别是读写操作和计算操作。其中读写操作主要是涉及到的就是I/O操作，其中包括网络I/O和磁盘I/O。计算操作主要涉及到CPU。而多线程的目的，就是通过并发的方式来提升I/O的利用率和CPU的利用率。而Redis的操作基本都是基于内存的，CPU资源根本就不是Redis的性能瓶颈，所以Redis不需要通过多线程技术来提升CPU利用率。
+
+      而提升I/O利用率，确实很有必要，但并不是只可以采用多线程技术这一条路。采用多线程可以帮助我们提升CPU和I/O的利用率，但是多线程带来的并发问题也给这些语言和框架带来了更多的复杂性。而且，多线程模型中，多个线程的互相切换也会带来一定的性能开销。所以，在提升I/O利用率这个方面上，Redis并没有采用多线程技术，而是选择了I/O多路复用技术。至于为什么单线程那么快我觉得主要有以下几个原因：
+      1. Redis的大部分操作都在内存中完成，内存中的执行效率本身就很快，并且采用了高效的数据结构，比如哈希表和跳表。
+      2. 使用单线程避免了多线程的竞争，省去了多线程切换带来的时间和性能开销，并且不会出现死锁。
+      3. 采用 I/O 多路复用机制处理大量客户端的Socket请求，因为这是基于非阻塞的I/O模型，这就让Redis可以高效地进行网络通信，I/O的读写流程也不再阻塞。
+
+      ### 为什么Redis 6.0 引入多线程
+      Redis正式推出了6.0版本，这个版本中有很多重要的新特性，其中多线程特性引起了广泛关注。但是，Redis 6.0中的多线程，也只是针对处理网络请求过程采用了多线程，而数据的读写命令，仍然是单线程处理的。
+
+      根据测算，Redis 将所有数据放在内存中，内存的响应时长大约为 100 纳秒，对于小数据包，Redis 服务器可以处理 80,000 到 100,000 QPS，这么高的对于 80% 的公司来说，单线程的 Redis 已经足够使用了。但随着越来越复杂的业务场景，有些公司动不动就上亿的交易量，因此需要更大的 QPS。
+
+      为了提升QPS，很多公司的做法是部署Redis集群，并且尽可能提升Redis机器数。但是这种做法的资源消耗是巨大的。而经过分析，限制Redis的性能的主要瓶颈出现在网络IO的处理上，虽然之前采用了多路复用技术。但是多路复用的IO模型本质上仍然是同步阻塞型IO模型。
+
+      在多路复用的IO模型中，在处理网络请求时，调用 select （其他函数同理）的过程是阻塞的，也就是说这个过程会阻塞线程，如果并发量很高，此处可能会成为瓶颈。虽然现在很多服务器都是多个CPU核的，但是对于Redis来说，因为使用了单线程，在一次数据操作的过程中，有大量的CPU时间片是耗费在了网络IO的同步处理上的，并没有充分的发挥出多核的优势。如果能采用多线程，使得网络处理的请求并发进行，就可以大大的提升性能。多线程除了可以减少由于网络 I/O 等待造成的影响，还可以充分利用 CPU 的多核优势。所以，Redis 6.0采用多个IO线程来处理网络请求，网络请求的解析可以由其他线程完成，然后把解析后的请求交由主线程进行实际的内存读写。提升网络请求处理的并行度，进而提升整体性能。那么，在引入多线程之后，如何解决并发带来的线程安全问题呢？Redis 6.0 只有在网络请求的接收和解析，以及请求后的数据通过网络返回时，使用了多线程。而数据读写操作还是由单线程来完成的，所以，这样就不会出现并发问题了。
+
 
       </details> 
 
@@ -4244,6 +4299,132 @@
 
       </details>
 
+    - <details><summary>Redis常用命令</summary>
+
+      ### 全局命令
+      - 查询键
+      keys * 查询所有的键，会遍历所有的键值，复杂度O(n)
+
+      ### 针对key的操作
+      - 设置值 O(1)
+      set key value [ex]  [px]  [nx|xx] 
+
+      - 批量设置值O(k)
+      mset key value [key value ......] 
+
+      - 批量获取值O(k)，k是键的个数
+      mget key [key ......]
+
+      - 计数O(1)
+      incr key
+      decr key
+
+      ### Hash操作
+      - 设置值
+      hset key field value，如hset user:1 name tom
+
+      - 获取值
+      hget key field 
+
+      - 删除field
+      hdel key field [field ......] 会删除一个或多个field，返回结果为成功删除fiel的个数
+
+      - 获取所有field
+      hkeys key
+
+      - 获取所有value
+      hvals key 
+
+      ### 列表List操作
+      列表类型用于存储多个有序的字符串，可以重复
+
+      添加：rpush 、lpush、linsert
+      查：lrange、lindex、llen
+      删除：lpop 、rpop、 lrem、ltrim
+      修改：lset
+      阻塞操作：blpop、brpop
+
+      - 添加
+      从右边插入元素：rpush key value [value......]
+      从左边插入元素：lpush key value [value......]
+      向某个元素前或者后插入元素：linsert key before|after pivot value
+
+      - 查找
+      获取指定范围内的元素列表：lrange key start end，索引下标从左到右分别是0到N-1，从右到左分别是-1到-N；end选项包含了自身，lrange mylist 1 3 获取列表中第2个到第4个元素
+
+      - 删除
+      从列表右侧弹出元素：rpop key
+      从列表左侧弹出元素：lpop key
+      删除指定元素：lrem key count value，lrem命令会从列表中找到=value的元素进行删除，根据count的不同分为3中情况，count>0，从左到有，删除最多count个元素，count<0，从右到左，删除最多count绝对值个元素，count=0，删除所有
+
+      - 修改
+      lset key index newValue 修改指定索引下标的元素 
+
+      - 阻塞操作
+      blpop key [key ...] timeout
+      brpop key [key ...] timeout 
+
+      ### Set操作（不可重复）
+      - 添加元素
+      sadd key element [element .....] 返回结果为添加成功的元素个数
+
+      - 删除元素
+      srem key element [element .....] 返回结果为删除成功的元素个数
+
+      - 计算元素个数
+      scard key，scard的时间复杂度为O(1)，直接用redis内部的变量
+
+      - 判断元素是否在集合中
+      sismember key element 在集合中则返回1，否则返回0
+
+      - 随机从集合返回指定个数元素
+      srandmember key [count] count可不写，默认为1
+
+      - 从集合随机弹出元素
+      spop key [count]  
+
+      - 集合间的操作
+      求多个集合的交集 sinter key [ key ......]
+      求多个集合的并集 sunion key [key ......]
+      求多个集合的差集 sdiff key [key ......] 第一个key里面有的，第二个key里面没有的
+      将交集、并集、差集的结果保存：sinterstore {destination key} [ key ......]，如：sinterstore user:1_2:inter user:1 user:2，这里key user:1_2:incr也是集合类型
+
+      ### ZADD操作（有序集合）
+      - 添加成员，时间复杂度O(log(n)), sadd为O(1)
+      zadd key score member[score member .....] 返回结果为添加成功的元素个数
+
+      - 计算成员个数
+      zcard key scard的时间复杂度为O(1),直接用redis内部的变量
+
+      - 计算某个成员分数
+      zsore key member 
+
+      - 计算成员的排名
+      zrank key member
+
+      - 删除成员
+      zrem key member [member .......]
+
+      - 增加成员的分数
+      zincrby key increment member
+
+      - 返回指定排名范围的成员
+      zrange key start end [withscores] 从低分到高分
+      zrevrange key start end [withscores] 从高分到低分
+
+      - 返回指定分数范围的成员
+      zrange key min max [withscores] [limit offset count ] 按照分数从低分到高分
+      zrevrange key max min [withscores] [limit offset count ] 按照分数从高分到低分
+
+      - 返回指定分数范围的成员个数
+      zcount key min max
+
+      - 删除指定排名内的升序元素
+      zremrangebyrank key start end
+ 
+
+      </details>
+
 - 分布式
   - 分布式基础
     - <details><summary>ACID</summary>
@@ -4592,9 +4773,11 @@
 
   - 分布式事务
     - <details><summary>两阶段提交</summary>
-     
+
       #### 概括
-      参与者将操作成败通知协调者，再由协调者根据所有参与者的反馈情报决定各参与者是否要提交操作还是中止操作
+      基于XA协议实现的分布式事务，XA 协议中分为两部分：事务管理器和本地资源管理器。其中本地资源管理器往往由数据库实现，比如Oracle、MYSQL这些数据库都实现了XA接口，而事务管理器则作为一个全局的调度者。
+
+      事务的参与者将操作成败通知协调者，再由协调者根据所有参与者的反馈情报决定各参与者是否要提交操作还是中止操作
 
       #### 准备阶段
       1. 协调者节点向所有参与者节点询问是否可以执行提交操作，并开始等待各参与者节点的响应。
@@ -4621,6 +4804,11 @@
       4. 太过保守：两阶段提交过程中任何一个节点故障都会导致整个事务失败
       5. 二阶段无法解决的问题：协调者在发出commit消息之后宕机，而唯一接收到这条消息的参与者同时也宕机了。那么即使协调者通过选举协议产生了新的协调者，这条事务的状态也是不确定的，没人知道事务是否被已经提交
 
+      两阶段提交（2PC），对业务侵⼊很小，它最⼤的优势就是对使⽤⽅透明，用户可以像使⽤本地事务⼀样使⽤基于XA协议的分布式事务，能够严格保障事务ACID特性。
+
+      可2PC的缺点也是显而易见，它是一个强一致性的同步阻塞协议，事务执⾏过程中需要将所需资源全部锁定，也就是俗称的刚性事务。所以它比较适⽤于执⾏时间确定的短事务，整体性能比较差。
+
+      一旦事务协调者宕机或者发生网络抖动，会让参与者一直处于锁定资源的状态或者只有一部分参与者提交成功，导致数据的不一致。因此，在⾼并发性能⾄上的场景中，基于XA协议的分布式事务并不是最佳选择。
       </details> 
 
     - <details><summary>三阶段提交</summary>
@@ -4671,29 +4859,107 @@
     
     - <details><summary>TCC</summary>
 
-      #### TCC阶段一：Try
-      执行锁定资源操作，如一个下单过程：
-      1. 先在订单服务先把订单状态修改为：OrderStatus.UPDATING，别直接把订单状态修改为已支付，先把订单状态修改为UPDATING，也就是修改中的意思
-      2. 减库存操作：把可销售的库存：100 - 2 = 98，设置为98没问题，然后在一个单独的冻结库存的字段里，设置一个2。也就是说，有2个库存是给冻结了
-      3. 积分服务：保持积分为1190不变，在一个预增加字段里，比如说prepare_add_credit字段，设置一个10，表示有10个积分准备增加
-      4. 仓储服务：先创建一个销售出库单，但是这个销售出库单的状态是“UNKNOWN”
+      ### 概括
+      所谓的TCC编程模式，也是两阶段提交的一个变种，不同的是TCC为在业务层编写代码实现的两阶段提交。TCC分别指Try、Confirm、Cancel，一个业务操作要对应的写这三个方法。
 
-      也就是设置一个预备类的状态，冻结部分数据，等等
+      TCC中有一个事务协调器（Transaction Coordinator, TC）。TC是一个独立的服务，用于协调分布式事务内的多个操作一起提交或者回滚。TCC事务的执行流程如下：
+      ![tcc事务](resources/tcc事务.png)
 
-      #### TCC阶段二：Confirm
-      1. 订单服务里：正式把订单的状态设置为“已支付”
-      2. 库存服务：将之前冻结库存字段的2个库存扣掉变为0
-      3. 积分服务：将预增加字段的10个积分扣掉，然后加入实际的会员积分字段中，从1190变为1120
-      4. 仓储服务：将销售出库单的状态正式修改为“已创建”，可以供仓储管理人员查看和使用，而不是停留在之前的中间状态“UNKNOWN”
+      TCC能够保证最终一致性，但允许业务看到多个事务内操作的中间状态。通过TC调度confirm和cancel的执行，一旦失败会定期持续重试，直到成功为止，以此来保证最终一致。
 
-      #### TCC阶段三：Cancel
-      1. 在Try阶段，比如积分服务，执行出错了，回滚整个事务
-      2. 订单服务：将订单的状态设置为“CANCELED”，也就是这个订单的状态是已取消
-      3. 库存服务：将冻结库存扣减掉2，加回到可销售库存里去，98 + 2 = 100
-      4. 积分服务：将预增加积分字段的10个积分扣减掉
-      5. 仓储服务：将销售出库单的状态修改为“CANCELED”设置为已取消
+      通常TC内部可以选择使用MySQL存储事务执行状态信息，TC内部会不断扫描所有未完成的事务记录，定期触发重试。
 
-      #### 最后
+      以转账场景为例（这一场景有很多其他解决方案，为了方便介绍 TCC 事务用法举了这个简单场景）：
+
+      需要从账户A转出¥100到账户B，如果账户A余额不足，则转账失败，否则应当保证转账成功。由于账户A和账户B不在一个MySQL分片上，不能用本地事务。
+
+      转账过程中，有两个操作需要放到事务中：
+      1. 扣减账户A的余额 
+      2. 增加账户B的余额
+
+      ### TCC阶段一：Try
+      预留所需资源，资源预留失败应抛出异常（让事务发起方知道这里失败了，从而决定是否回滚）
+
+      #### 扣减余额
+      1. 检查账户A余额是否足够，并尝试将本次转账的¥100预留出来。
+      2. 如果预留失败说明 账户A余额不足，或者存在其他问题，无法完成本次转账事务。此时应抛出异常。
+      3. 预留成功则正常返回。
+
+      Try具体实现：
+      
+      为了能够预留下来 账户A 的部分，可以在余额表里增加「冻结金额」字段。比如表结构如下：
+      |账户ID|余额|冻结金额|
+      |-|-|-|
+      |账户A|¥123|¥0|
+
+      可以通过本地事务原子地冻结账户A¥100。
+      |账户ID|余额|冻结金额|
+      |-|-|-|
+      |账户A|¥23|¥100|
+
+      为了让后续的Confirm和Cancel能够做到幂等，在Try的过程中，还需要写入一条操作记录。应当把写操作记录和冻结余额会放在一个本地事务内，保证原子性。操作记录表中也包含账户ID，这通常是为了分库分表时，让某个账户的余额记录、操作记录 分布在相同分片上，这样才可以使用本地事务。操作记录表结构可以如下：
+      |账户ID|操作ID|操作状态|操作金额|
+      |-|-|-|-|
+      |账户A|操作ID（可以用TCC的事务协调者的xid+branchId组成操作ID）|try_success|-¥100|
+
+      操作状态可以有这几种：try_success、cofirm_success、cancel_success。有这几种状态就可以支持Confirm、Cancel方法实现幂等了。如果业务上需要更多种状态，可以进行扩展。当然操作记录表可以增加一些额外字段，比如可以增加一列，记录本条操作的详情：
+      |账户ID|操作ID|操作状态|操作金额|操作详情|
+      |-|-|-|-|-|
+      |账户A|操作ID（可以用TCC的事务协调者的xid+branchId组成操作ID）|try_success|-¥100|A向B转账¥100|
+
+      #### 增加余额
+      类似的，增加对方账户余额的Try操作流程大致如下：
+
+      1. 校验账户B是否存在、状态是否正常。如果不符合转入条件，应抛出异常。
+      2. 在「冻结金额」中增加转账金额。
+      3. 成功则正常返回。
+
+      Try具体实现:
+      1. 校验账户B状态，此处主要是业务层面逻辑，不详细展开，按需实现即可。
+      2. 增加冻结金额。比如账户B初始状态如下：
+      |账户ID|余额|冻结金额|
+      |-|-|-|
+      |账户A|¥666|¥0|
+
+      Try执行完成后，状态如下：
+      |账户ID|余额|冻结金额|
+      |-|-|-|
+      |账户A|¥666|¥100|
+
+      为了让后续的Confirm和Cancel能够做到幂等，也需要写入一条操作记录。同样需要和前边的操作放在同一个本地事务内，保证原子性。
+      |账户ID|操作ID|操作状态|
+      |-|-|-|
+      |账户A|操作ID|try_success|
+      
+      ### TCC阶段二：Confirm
+      使用Try阶段预留的资源，执行事务内操作，Confirm操作满足幂等性
+
+      #### 扣减余额
+      1. 找到操作记录，获取需要扣减的金额数量。
+      2. 在账户A的「冻结金额」中，扣除相应金额。
+      3. 将操作记录状态修改为cofirm_success。
+      4. 上述操作应当在一个本地事务中完成。如果有异常，需要向上抛出，TCC框架会做定期重试。
+
+      Confirm具体实现和Try类似
+
+      #### 增加余额
+      和账户A类似的操作
+
+      ### TCC阶段三：Cancel
+      释放Try阶段预留的资源，Cancel操作满足幂等性
+
+      #### 扣减余额
+      1. 找到操作记录，获取需要扣减的金额数量。
+      2. 在账户A的「冻结金额」中，扣除相应金额，并加回「余额」。
+      3. 将操作记录状态修改为cancel_success。
+      4. 上述操作应当在一个本地事务中完成。如果有异常，需要向上抛出，TCC框架会做定期重试。
+
+      Cancel具体实现和Try类似
+
+      #### 增加余额
+      和账户A类似的操作
+
+      ### 最后
       Try阶段对资源进行预备，保证了事务的资源是够的，所以Confirm阶段是大概率能够成功的，即使Confirm失败了，也要不断重试直到成功，因为资源已经预备了，对于Cancel阶段也是一样，重试保证成功
 
       如果有一些意外的情况发生了，比如说订单服务突然挂了，然后再次重启，TCC事务框架要记录一些分布式事务的活动日志的，可以在磁盘上的日志文件里记录，也可以在数据库里记录。保存下来分布式事务运行的各个阶段和状态，服务需要根据日志执行他需要执行的操作
