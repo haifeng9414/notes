@@ -2461,7 +2461,7 @@
       - <details><summary>什么是幻读，如何解决</summary>
 
         #### 什么是幻读
-        幻读，并不是说两次读取获取的结果集不同，幻读侧重的方面是某一次的select操作得到的结果所表征的数据状态无法支撑后续的业务操作。更为具体一些：select某记录是否存在，不存在，准备插入此记录，但执行insert时发现此记录已存在，无法插入，此时就发生了幻读
+        事务1对一个表中所有的行的某个数据项做了从“1”修改为“2”的操作，这时事务2又对这个表中插入了一行数据项，而这个数据项的数值还是为“1”并且提交给数据库。而操作事务1的用户如果再查看刚刚修改的数据，会发现还有一行没有修改，其实这行是从事务2中添加的，就好像产生幻觉一样，这就是发生了幻读。
 
         #### 如何解决幻读
         产生幻读的原因是，即使使用行锁，行锁也只能锁住存在的行，新插入记录这个动作，加行锁时该行还不存在，更新操作更新的是记录之间的“间隙”。因此，为了解决幻读问题，InnoDB引入新的锁，也就是间隙锁（Gap Lock）。
@@ -2964,7 +2964,7 @@
         ```
 
         列含义：
-        1. id：select查询的标识符。 每个select都会自动分配一个唯一的标识符，id数值越大的优先执行，id相同的从上往下顺序执行。
+        1. id：select查询的标识符。 每个select都会自动分配一个唯一的标识符，id数值越大的优先执行，id相同的从上往下顺序执行，含有UNION关键字的查询会特别一点，union时用到的临时表id的值是NULL。
         2. select_type：select查询的类型
            1. SIMPLE：不包含任何子查询或union的查询
            2. PRIMARY：包含子查询时最外层查询就是PRIMARY
@@ -3015,29 +3015,21 @@
         ```
 
         #### SUBQUERY
-        子查询中的第一个SELECT
+        如果包含子查询的查询语句不能够转为对应的`semi-join`的形式（http://mysql.taobao.org/monthly/2020/07/04/），并且该子查询是不相关子查询，并且查询优化器决定采用将该子查询物化的方案来执行该子查询时，该子查询的第一个`SELECT`关键字代表的那个查询的`select_type`就是`SUBQUERY`。
         ```
-        mysql> explain select * from employee where id = (select id from employee where id =1);
-        +----+-------------+------------+-------+---------------+---------+---------+-------+------+-------------+
-        | id | select_type | table      | type  | possible_keys | key     | key_len | ref   | rows | Extra       |
-        +----+-------------+------------+-------+---------------+---------+---------+-------+------+-------------+
-        |  1 | PRIMARY     | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | NULL        |
-        |  2 | SUBQUERY    | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | Using index |
-        +----+-------------+------------+-------+---------------+---------+---------+-------+------+-------------+
+        mysql> explain select * from s1 where key1 in (select key1 from s2) or key3 = 'a';
         ```
 
-        #### DEPENDENT UNION & DEPENDENT SUBQUERY
-        DEPENDENT UNION，UNION中的第二个或后面的SELECT语句，但结果取决于外面的查询；DEPENDENT SUBQUERY，关联子查询
+        #### DEPENDENT SUBQUERY
+        如果包含子查询的查询语句不能够转为对应的`semi-join`的形式，并且该子查询是相关子查询，则该子查询的第一个`SELECT`关键字代表的那个查询的`select_type`就是`DEPENDENT SUBQUERY`。
         ```
-        mysql> explain select * from employee where id in (select id from employee where id = 1 union all select id from employee where id = 2);
-        +----+--------------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
-        | id | select_type        | table      | type  | possible_keys | key     | key_len | ref   | rows | Extra           |
-        +----+--------------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
-        |  1 | PRIMARY            | employee | ALL   | NULL          | NULL    | NULL    | NULL  |   26 | Using where     |
-        |  2 | DEPENDENT SUBQUERY | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | Using index     |
-        |  3 | DEPENDENT UNION    | employee | const | PRIMARY       | PRIMARY | 8       | const |    1 | Using index     |
-        | NULL | UNION RESULT       | <union2,3> | ALL   | NULL          | NULL    | NULL    | NULL  | NULL | Using temporary |
-        +----+--------------------+------------+-------+---------------+---------+---------+-------+------+-----------------+
+        mysql> explain select * from s1 where key1 in (select key1 from s2 where s1.key2 = s2.key2) or key3 = 'a';
+        ```
+
+        #### DEPENDENT UNION 
+        在包含`UNION`或者`UNION ALL`的大查询中，如果各个小查询都依赖于外层查询的话，那除了最左边的那个小查询之外，其余的小查询的`select_type`的值就是`DEPENDENT UNION`。
+        ```
+        mysql> explain select * from s1 where key1 in (select key1 from s2 where key1 = 'a' union select key1 from s1 where key1 = 'b');
         ```
 
         #### DERIVED
@@ -3050,6 +3042,12 @@
         |  1 | PRIMARY     | <derived2> | system | NULL          | NULL    | NULL    | NULL  |    1 | NULL  |
         |  2 | DERIVED     | employee | const  | PRIMARY       | PRIMARY | 8       | const |    1 | NULL  |
         +----+-------------+------------+--------+---------------+---------+---------+-------+------+-------+
+        ```
+
+        #### DERIVED
+        当查询优化器在执行包含子查询的语句时，选择将子查询物化之后与外层查询进行连接查询时，该子查询对应的`select_type`属性就是`MATERIALIZED`。
+        ```
+        mysql> explain select * from s1 where key1 in (select key1 from s2);
         ```
 
         ### type字段
@@ -3092,6 +3090,18 @@
         +----+-------------+-------+--------+-------------------+-----------+---------+----------------------+------+-------+
         ```
 
+        #### unique_subquery
+        类似于两表连接中被驱动表的`eq_ref`访问方法，`unique_subquery`是针对在一些包含`IN`子查询的查询语句中，如果查询优化器决定将`IN`子查询转换为`EXISTS`子查询，而且子查询可以使用到主键进行等值匹配的话，那么该子查询执行计划的`type`列的值就是`unique_subquery`，比如下面的这个查询语句。
+        ```
+        mysql> explain select * from s1 where key2 in (select id from s2 where s1.key1 = s2.key1) or key3 = 'a';
+        ```
+
+        #### index_subquery
+        `index_subquery`与`unique_subquery`类似，只不过访问子查询中的表时使用的是普通的索引，比如这样：
+        ```
+        mysql> explain select * from s1 where common_field in (select key3 from s2 where s1.key1 = s2.key1) or key3 = 'a';
+        ```
+
         #### ref
         满足最左前缀原则，或用到了非唯一索引，或多表的join查询的查询条件用到了非唯一索引，可以用于使用=或<=>操作符的带索引的列
         ```
@@ -3102,6 +3112,12 @@
         |  1 | SIMPLE      | t4    | ALL  | NULL              | NULL      | NULL    | NULL                 | 1000 |       |
         |  1 | SIMPLE      | t3    | ref  | PRIMARY,idx_t3_id | idx_t3_id | 4       | dbatest.t4.accountId |    1 |       |
         +----+-------------+-------+------+-------------------+-----------+---------+----------------------+------+-------+
+        ```
+
+        #### ref_or_null
+        当对普通二级索引进行等值匹配查询，该索引列的值也可以是`NULL`值时，那么对该表的访问方法就可能是ref_or_null
+        ```
+        mysql> explain select * from t1 WHERE key1 = 'abc' OR key1 is null;
         ```
 
         #### index_merge
@@ -3128,6 +3144,14 @@
 
         #### index
         表示全索引扫描(full index scan)，和ALL类型类似，只不过ALL类型是全表扫描，而index类型则仅仅扫描所有的索引，而不扫描数据
+        ```
+        mysql> explain select key_part1, key_part2, key_part3 from t1 where key_part2 = 'abc';
+        ```
+        假设key_part2不是联合索引idx_key_part最左索引列，我们无法使用ref或者range访问方法来执行这个语句。但是这个查询符合下面这两个条件：
+        - 它的查询列表只有3个列：key_part1, key_part2, key_part3，而索引idx_key_part又包含这三个列。
+        - 搜索条件中只有key_part2列。这个列也包含在索引idx_key_part中。
+         
+        也就是说我们可以直接通过遍历idx_key_part索引的叶子节点的记录来比较key_part2 = 'abc'这个条件是否成立，把匹配成功的二级索引记录的key_part1, key_part2, key_part3列的值直接加到结果集中就行了。
 
         #### ALL
         表示全表扫描，这个类型的查询是性能最差的查询
@@ -3140,6 +3164,12 @@
         #### Using index
         表示查询在索引树中就可查找所需数据，不用扫描表数据文件
 
+        #### Using index condition
+        使用到了索引下推，如：
+        ```
+        SELECT * FROM s1 WHERE key1 > 'z' AND key1 LIKE '%a';
+        ```
+
         #### Using filesort
         当SQL中包含ORDER BY操作，而且无法利用索引完成排序操作的时候，查询优化器不得不选择相应的排序算法来实现
         
@@ -3148,7 +3178,13 @@
         filesort只能应用在单个表上，如果有多个表的数据需要排序，那么MySQL会先使用using temporary保存临时数据，然后再在临时表上使用filesort进行排序，最后输出结果
 
         #### Using temporary
-        查询有使用临时表，一般出现于排序，分组和多表join的情况，查询效率不高，建议优化
+        查询有使用临时表，一般出现于排序，distinct，分组和多表join的情况，查询效率不高，建议优化
+
+        #### Using join buffer (Block Nested Loop)
+        在连接查询执行过程中，当被驱动表不能有效的利用索引加快访问速度，MySQL一般会为其分配一块名叫join buffer的内存块来加快查询速度，也就是基于块的嵌套循环算法，比如下面这个查询语句：
+        ```
+        select * from s1 inner join s2 on s1.common_field = s2.common_field;
+        ```
 
       </details>
 
