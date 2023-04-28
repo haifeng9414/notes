@@ -459,6 +459,7 @@
           一个死循环，所以使用ConcurrentHashMap时，不要在computeIfAbsent的Function中再去执行更新其它节点value
           的操作。ConcurrentHashMap在只有在put和remove等操作时才会锁住需要操作的数组元素，把锁的范围最小化了，具体
           的put和remove等过程看源码的注释
+          ```
 
           ### ConcurrentHashMap的key为什么不能是null？
           在ConcurrentMaps (ConcurrentHashMaps, ConcurrentSkipListMaps)这些考虑并发安全的容器中不允许null值的出现的主要原因是他可能会在并发的情况下带来难以容忍的二义性。而在非并发安全的容器中，这样的问题刚好是可以解决的。在map容器里面，调用map.get(key)方法得到的值是null，那你无法判断这个key是在map里面没有映射过，还是这个key在map里面根本就不存在。这种情况下，在非并发安全的map中，你可以通过map.contains(key)的方法来判断。但是在考虑并发安全的map中，在两次调用的过程中，这个值是有可能被改变的。
@@ -474,7 +475,6 @@
           调用map.get(key)方法得到的值是null，那你无法判断这个key是在map里面没有映射过，还是这个key在map里面根本就不存在。这种情况下，
           非并发安全的map中，可以通过map.contains(key)或map.containsKey(key)的方法来判断是不存在key还是value为null，以此来区分
           上面说的两重含义。但是在考虑并发安全的map中，在两次调用的过程中，这个值是有可能被改变的。
-          ```
 
           [ConcurrentHashMap-JDK8](Java/Java源码阅读/并发类/ConcurrentHashMap-JDK8.md)
         </details> 
@@ -1632,7 +1632,7 @@
            2. 处理时间达到了阈值 CMSMaxAbortablePrecleanTime，默认是5秒。
            3. Eden区的内存使用率达到了阈值 CMSScheduleRemarkEdenPenetration，默认为50%。
            4. 同时该阶段有一个触发前提：Eden 区的内存使用量大于参数CMSScheduleRemarkEdenSizeThreshold，默认是2M。
-        5. 重新标记（STW remark），这个阶段会暂停虚拟机，遍历新生代对象、gc roots、卡表中脏卡片对应的老年代区域，进行重新标记。
+        5. 重新标记（STW remark），这个阶段会暂停虚拟机，遍历整个新生代对象、gc roots、卡表中脏卡片对应的老年代区域，进行重新标记。
         6. 并发清理（Concurrent sweeping），清理垃圾对象，这个阶段收集器线程和应用程序线程并发执行。
         7. 并发重置（Concurrent reset），这个阶段，重置CMS收集器的数据结构，等待下一次垃圾回收。
 
@@ -1641,7 +1641,18 @@
         - 需要更大的堆空间。因为CMS标记阶段应用程序的线程还是在执行的，那么就会有堆空间继续分配的情况，为了保证在CMS回收完堆之前还有空间分配给正在运行的应用程序，必须预留一部分空间。也就是说，CMS不会在老年代满的时候才开始收集。相反，它会尝试更早的开始收集，已避免上面提到的情况：在回收完成之前，堆没有足够空间分配！默认当老年代使用68%（JDK6调整到了92%）的时候，CMS就开始行动了。 – XX:CMSInitiatingOccupancyFraction =n 来设置这个阀值。要是CMS运行期间预留的内存无法满足程序需要，就会出现一次"Concurrent Mode Failure"失败，这时虚拟机将启动后备预案：临时启用Serial Old收集器来重新进行老年代的垃圾收集，这样停顿时间就很长了。所以说参数-XX:CMSInitiatingOccupancyFraction设置得太高很容易导致大量"Concurrent Mode Failure"失败，性能反而降低。
 
         Final Remark阶段为什么还需要遍历GCRoots？
-        这是因为CMS的写屏障（write barrier）并不是对所有会导致引用变化的字节码生效，例如不支持astore_X（把栈顶的值存到本地变量表）。至于为什么不为 astore_X添加写屏障，R大认为是栈和年轻代属于数据快速变化的区域，对于这些区域使用写屏障的收益比较差。
+        CMS是一个old gen collector（不是whole heap collector）。既然只收集old gen，它必须把当前处于非收集区域的young gen算作是root。这跟一般的young GC时要把old gen的remembered set部分算作root的道理一样，只不过HotSpot没有用card table来记录young -> old引用，所以就干脆扫描整个young gen作为root。那为什么card table不记录young -> old引用呢？这是因为CMS的写屏障（write barrier）并不是对所有会导致引用变化的字节码生效，例如不支持astore_X（把栈顶的值存到本地变量表）。至于为什么不为 astore_X添加写屏障，R大认为是栈和年轻代属于数据快速变化的区域，对于这些区域使用写屏障的收益比较差：原本使用write barrier + remembered set就是为了减少需要扫描的非收集区域的大小，只扫描有变化的部分即可。但调用栈的变化非常频繁，特别是在短小函数/方法多的情况下更加如此。这样write barrier可能会让remembered set把stack和young gen的很大部分区域都记录下来，对应的card table部分可能大部分都是dirty的，要把young gen当作root的时候与其扫描card table还不如直接扫描整个young gen。用下面的例子理解astore_X没有写屏障的影响：
+        ```
+        public static void main(String[] args) {    
+          Animal p = new Dog();    
+          p.child = new Dog();  
+          p.child.bark();    
+          Animal q = p.child;  
+          p.child = null;    
+          q.bark();    
+        } 
+        ```
+        假设第4行代码`p.child.bark();`执行完毕后CMS开始，initial mark将local1（本地变量1，也就是局部变量p）指向的Dog对象标记，然后concurrent mark开始，假设main“先”执行，“Animal q = p.child”使得local2（即局部变量q）指向p.child，但由于这个引用关系是通过astore_2字节码添加的，该字节码没有write barrier，且p.child这个操作对应的字节码getfiled也没有read barrier，因此刚添加的这个从q到p.child的引用并不会被card table或者mod-union table记录下来，然后执行“p.child = null”使得灰对象p到白对象p.child的引用关系被删除了，但由于是incremental update而非SATB，引用关系的删除也没有记录。因此，remark阶段必须重新扫描root，否则q到p.child的引用关系就丢失了。
 
         Final Remark阶段还需要遍历GC Roots，那之前的标记工作不是白做了？
         在三色标记法中，如果扫描到被标记为黑色的对象就会终止，而之前的并发标记和预处理已经完成了绝大部分对象的标记，也就是此时大部分对象已经是黑色了，因此 Final Remark 阶段的工作其实会减少很多。简单来说就是：遍历的广度不变，但是深度变浅了。
